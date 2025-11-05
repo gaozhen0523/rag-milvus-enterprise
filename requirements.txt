@@ -4,3 +4,4 @@ pydantic
 pymilvus==2.4.4
 python-dotenv==1.0.1
 marshmallow<4.0.0
+pytest==8.4.2
