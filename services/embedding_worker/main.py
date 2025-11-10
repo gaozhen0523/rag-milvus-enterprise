@@ -1,3 +1,4 @@
+#services/embedding_worker/main.py
 import os
 from datetime import datetime
 from libs.chunking.text_chunker import TextChunker

@@ -1,3 +1,4 @@
+#scripts/init_collection.py
 from libs.db.milvus_client import MilvusClientFactory
 
 def init_collection():

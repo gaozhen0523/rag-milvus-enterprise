@@ -1,3 +1,4 @@
+#services/api_gateway/main.py
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Query
@@ -88,17 +89,50 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
     )
 
     # dry_run 模式：直接调用 chunker 预估分片数
-    if dry_run and payload.text:
-        try:
-            from libs.chunking.text_chunker import TextChunker
-            chunker = TextChunker(
-                strategy=payload.chunk.strategy,
-                size=payload.chunk.size,
-                overlap=payload.chunk.overlap,
-            )
-            chunks = chunker.chunk(payload.text, meta=payload.metadata)
-            ack.preview_chunks = len(chunks)
-        except Exception as e:
-            logger.exception("dry_run chunk failed: %s", e)
+    if dry_run:
+        if payload.text:
+            try:
+                from libs.chunking.text_chunker import TextChunker
+                chunker = TextChunker(
+                    strategy=payload.chunk.strategy,
+                    size=payload.chunk.size,
+                    overlap=payload.chunk.overlap,
+                )
+                chunks = chunker.chunk(payload.text, meta=payload.metadata)
+                ack.preview_chunks = len(chunks)
+                ack.note = "Dry run only. No Milvus insert."
+            except Exception as e:
+                logger.exception("dry_run chunk failed: %s", e)
 
+        return ack
+    # ---------------------------------------------------------------------
+    # dry_run == False → 真正的 ingest 流程
+    # ---------------------------------------------------------------------
+    # 1) 获取文本（支持 file_url）
+    if payload.text:
+        text = payload.text
+    else:
+        import requests
+        try:
+            r = requests.get(payload.file_url, timeout=10)
+            r.raise_for_status()
+            text = r.text
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Failed to download file_url: {e}")
+
+    # 2) 调用 Worker 执行 chunk → embed → milvus insert
+    try:
+        from services.embedding_worker.worker import process_document
+        inserted = process_document(
+            doc_id=task_id,
+            text=text,
+            chunk_params=payload.chunk,
+            metadata=payload.metadata,
+        )
+    except Exception as e:
+        logger.exception("Ingest processing failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
+
+    ack.preview_chunks = inserted
+    ack.note = f"Inserted {inserted} chunks into Milvus."
     return ack
