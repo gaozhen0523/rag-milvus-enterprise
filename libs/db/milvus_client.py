@@ -49,8 +49,13 @@ class MilvusClientFactory:
         self.connect(alias)
 
         if utility.has_collection(name, using=alias):
-            print(f"ℹ️ Collection '{name}' already exists.")
-            return Collection(name=name, using=alias)
+            if utility.has_collection(name, using=alias):
+                col = Collection(name=name, using=alias)
+                actual_dim = col.schema.fields[1].params.get("dim")
+                if actual_dim != dim:
+                    raise ValueError(
+                        f"Existing collection '{name}' dim={actual_dim} ≠ expected {dim}. Please drop and recreate.")
+                return col
 
         fields = [
             FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
@@ -74,6 +79,8 @@ class MilvusClientFactory:
         metric_type="L2",
         nlist=128,
     ):
+        index_type = index_type or "IVF_FLAT"
+        metric_type = metric_type or os.getenv("EMBEDDING_METRIC", "IP")
         """创建索引并加载到内存"""
         index_params = {
             "metric_type": metric_type,
