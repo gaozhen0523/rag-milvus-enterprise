@@ -7,6 +7,8 @@ from typing import Optional, Literal, Dict, Any
 import logging
 import uuid
 from datetime import datetime, timezone
+import os, time
+import numpy as np
 
 from libs.db.milvus_client import MilvusClientFactory
 
@@ -136,3 +138,40 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
     ack.preview_chunks = inserted
     ack.note = f"Inserted {inserted} chunks into Milvus."
     return ack
+
+# -----------------------------------------------------------------------------
+# Query 接口：向量检索（统一 DummyEmbeddingModel）
+# -----------------------------------------------------------------------------
+@app.get("/query")
+def query_endpoint(
+    q: str = Query(..., description="查询文本"),
+    top_k: int = Query(5, ge=1, le=20),
+):
+    """
+    执行向量检索：
+    - 从 EMBEDDING_MODEL 环境变量读取模型类型（默认 dummy）
+    - 使用 DummyEmbeddingModel 生成向量（与 worker 一致）
+    - 调用 Milvus 搜索
+    """
+    from libs.embedding.factory import get_embedding_model
+    model_name = os.getenv("EMBEDDING_MODEL", "dummy").lower()
+    dim = int(os.getenv("EMBEDDING_DIM", 768))
+
+    start_time = time.time()
+
+
+    model = get_embedding_model()
+    vec = model.embed_one(q)
+
+    factory = MilvusClientFactory()
+    results = factory.search_vectors(np.array(vec, dtype="float32"), top_k=top_k)
+
+    latency_ms = round((time.time() - start_time) * 1000, 2)
+    return {
+        "query": q,
+        "model": model_name,
+        "embed_dim": dim,
+        "latency_ms": latency_ms,
+        "results": results,
+        "note": f"Model={model_name}; replaceable with real model later",
+    }

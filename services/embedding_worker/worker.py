@@ -1,3 +1,4 @@
+#services/embedding_worker/worker.py
 import os
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -5,6 +6,7 @@ from datetime import datetime
 from libs.chunking.text_chunker import TextChunker
 from libs.embedding.dummy import DummyEmbeddingModel
 from libs.db.milvus_client import MilvusClientFactory
+from libs.embedding.factory import get_embedding_model
 
 
 def process_document(
@@ -35,7 +37,7 @@ def process_document(
     # 2) Embedding
     # -----------------------------
     dim = int(os.getenv("EMBEDDING_DIM", 768))  # 与 rag_collection 一致
-    model = DummyEmbeddingModel(dim=dim, normalize=True)
+    model = get_embedding_model()
 
     chunk_texts = [c.text if hasattr(c, "text") else str(c) for c in chunks]
     vectors = model.embed_batch(chunk_texts)
