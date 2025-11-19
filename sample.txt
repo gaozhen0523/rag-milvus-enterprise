@@ -1,72 +1,53 @@
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
-RAG (Retrieval-Augmented Generation) systems combine retrieval and generation models...
-They are used in enterprise knowledge management systems.
-This worker will split the document into smaller chunks for embedding.
+Milvus is an open-source vector database designed for scalable similarity search and AI applications.
+It provides high-performance storage, indexing, and retrieval for embeddings generated by machine learning models.
+
+Milvus supports multiple index types such as IVF_FLAT, IVF_SQ8, and HNSW.
+It is commonly used for semantic search, recommendation systems, chatbots with RAG, and anomaly detection.
+
+### Why choose Milvus?
+
+1. Horizontal Scalability
+Milvus can scale from a single node to a distributed cluster with billions of vectors.
+
+2. High Performance
+It supports GPU-accelerated indexing and search, enabling sub-second query responses even with massive datasets.
+
+3. Flexible Data Model
+You can store embeddings along with metadata fields such as text, titles, timestamps, and custom JSON attributes.
+
+4. Cloud Native
+Milvus is designed to run on Kubernetes and integrates with cloud storage such as MinIO or S3.
+
+---
+
+### Example Use Case: Knowledge Retrieval
+
+Imagine a company with thousands of internal documents—PDFs, emails, Confluence pages, and meeting notes.
+A Retrieval-Augmented Generation (RAG) system can index all content as embeddings.
+When an employee asks a question, the system retrieves the most relevant chunks and feeds them into a language model.
+This improves accuracy while preventing hallucinations.
+
+---
+
+### Frequently Asked Questions
+
+**Q: What is the typical embedding dimension?**
+A: Many models use dimension 384, 512, 768, or 1024. It depends on your embedding model.
+
+**Q: Does Milvus support hybrid search?**
+A: Yes. You can combine vector similarity with keyword-based BM25 retrieval and apply ranking methods such as RRF.
+
+**Q: Can I ingest large documents?**
+A: Yes. Documents are usually chunked into small pieces (e.g., 300–500 characters) with overlaps to preserve semantic continuity.
+
+---
+
+### Additional Example Paragraph
+
+Artificial Intelligence systems increasingly rely on vector search technology.
+Instead of comparing text through exact keyword matching, embeddings capture semantic similarity.
+This allows a query such as “How to scale my search engine?” to match documents like “Horizontal scaling techniques for cloud services”.
+
+Hybrid search combines the strengths of vector search (semantic) and BM25 (lexical).
+This provides significantly better results in enterprise search scenarios.
+

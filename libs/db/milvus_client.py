@@ -151,7 +151,7 @@ class MilvusClientFactory:
             query_vector: np.ndarray,
             top_k: int = 5,
             collection_name: Optional[str] = None,
-            metric_type: str = "L2",
+            metric_type: str = os.getenv("EMBEDDING_METRIC", "IP"),
             nprobe: int = 8,
             output_fields: Optional[List[str]] = None,
             alias: str = "default",
@@ -205,3 +205,24 @@ class MilvusClientFactory:
             hits.append(item)
 
         return hits
+
+    def fetch_all_documents(self, alias: str = "default"):
+        """
+        读取 collection 内所有 rows，
+        只返回 meta 字段用于 BM25 构造 corpus。
+        （注意：建议仅在 corpus 构建或重建时调用）
+        """
+        self.connect(alias)
+        col = Collection(name=self.collection_name, using=alias)
+
+        # Milvus 查询不能直接用 ""，必须用 "id >= 0" 或 " " 作为 filter
+        try:
+            res = col.query(
+                expr="id >= 0",  # 返回所有 rows
+                output_fields=["meta"],
+            )
+        except Exception as e:
+            print(f"❌ fetch_all_documents error: {e}")
+            return []
+
+        return res  # list of dict，例如：[{ 'meta': {...} }, ...]

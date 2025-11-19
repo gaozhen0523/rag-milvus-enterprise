@@ -55,9 +55,10 @@ def process_document(
         {
             "source": "api_ingest",
             "received_at": datetime.utcnow().isoformat(),
+            "text": chunk_texts[i],  # <-- 新增：保存原文文本
             "user_meta": metadata or {},
         }
-        for _ in chunks
+        for i in range(len(chunks))
     ]
 
     # 列模式插入：必须与 schema 对齐

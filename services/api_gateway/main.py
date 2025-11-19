@@ -11,12 +11,17 @@ import os, time
 import numpy as np
 
 from libs.db.milvus_client import MilvusClientFactory
+from services.retriever.vector_retriever import VectorRetriever
+from services.retriever.hybrid_retriever import HybridRetriever
 
 # -----------------------------------------------------------------------------
 # FastAPI app
 # -----------------------------------------------------------------------------
 app = FastAPI(title="RAG API Gateway", version="0.0.4")
 logger = logging.getLogger("uvicorn")
+
+vector_retriever = VectorRetriever()
+hybrid_retriever = HybridRetriever()
 
 # -----------------------------------------------------------------------------
 # Health Check （原逻辑保留）
@@ -146,32 +151,28 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
 def query_endpoint(
     q: str = Query(..., description="查询文本"),
     top_k: int = Query(5, ge=1, le=20),
+    hybrid: bool = Query(False, description="是否使用 hybrid 检索"),
+    vector_k: int = 5,
+    bm25_k: int = 5,
 ):
     """
-    执行向量检索：
-    - 从 EMBEDDING_MODEL 环境变量读取模型类型（默认 dummy）
-    - 使用 DummyEmbeddingModel 生成向量（与 worker 一致）
-    - 调用 Milvus 搜索
+    支持 hybrid 检索：
+    - hybrid=false: 仅向量检索
+    - hybrid=true: vector + BM25
     """
-    from libs.embedding.factory import get_embedding_model
-    model_name = os.getenv("EMBEDDING_MODEL", "dummy").lower()
-    dim = int(os.getenv("EMBEDDING_DIM", 768))
 
     start_time = time.time()
 
-
-    model = get_embedding_model()
-    vec = model.embed_one(q)
-
-    factory = MilvusClientFactory()
-    results = factory.search_vectors(np.array(vec, dtype="float32"), top_k=top_k)
+    if not hybrid:
+        res = vector_retriever.search(q, top_k)
+    else:
+        res = hybrid_retriever.search(q, vector_k=vector_k, bm25_k=bm25_k)
 
     latency_ms = round((time.time() - start_time) * 1000, 2)
+
     return {
         "query": q,
-        "model": model_name,
-        "embed_dim": dim,
+        "hybrid": hybrid,
         "latency_ms": latency_ms,
-        "results": results,
-        "note": f"Model={model_name}; replaceable with real model later",
+        "results": res,
     }
