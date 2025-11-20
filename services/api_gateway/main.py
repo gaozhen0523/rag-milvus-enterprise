@@ -161,18 +161,66 @@ def query_endpoint(
     - hybrid=true: vector + BM25
     """
 
-    start_time = time.time()
+    # -----------------------------
+    # 仅向量检索模式
+    # -----------------------------
 
     if not hybrid:
+        t0 = time.time()
         res = vector_retriever.search(q, top_k)
-    else:
-        res = hybrid_retriever.search(q, vector_k=vector_k, bm25_k=bm25_k)
+        t1 = time.time()
+        raw_hits = res.get("results", [])
 
-    latency_ms = round((time.time() - start_time) * 1000, 2)
+        formatted = []
+
+        for hit in raw_hits:
+            # 兼容 meta 中的 text
+            text = hit.get("text")
+            meta = hit.get("meta") or {}
+
+            if not text and isinstance(meta, dict):
+                text = meta.get("text") or meta.get("content")
+
+            item = {
+                "doc_id": hit.get("doc_id"),
+                "chunk_id": hit.get("chunk_id"),
+                "text": text,
+                "score_vector": float(hit["score"]) if "score" in hit else None,
+                "score_bm25": None,
+                "rrf_score": None,
+                "sources": ["vector"],
+            }
+
+            if "error" in hit:
+                item["error"] = hit["error"]
+            formatted.append(item)
+
+        latency_ms = {
+            "vector": round((t1 - t0) * 1000, 2),
+            "total": round((t1 - t0) * 1000, 2),
+        }
+
+
+        return {
+            "query": q,
+            "hybrid": False,
+            "top_k": top_k,
+            "latency_ms": latency_ms,
+            "results": formatted,
+            }
+
+    # -----------------------------
+    # Hybrid 模式：vector + BM25 + RRF
+    # -----------------------------
+    res = hybrid_retriever.search(q, vector_k=vector_k, bm25_k=bm25_k)
+
 
     return {
         "query": q,
-        "hybrid": hybrid,
-        "latency_ms": latency_ms,
-        "results": res,
-    }
+        "hybrid": True,
+        "top_k": top_k,
+        "vector_k": vector_k,
+        "bm25_k": bm25_k,
+        "latency_ms": res.get("latency_ms", {}),
+        "results": res.get("fused_results", []),
+        }

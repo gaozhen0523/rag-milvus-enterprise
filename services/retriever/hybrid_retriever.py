@@ -1,8 +1,11 @@
 # services/retriever/hybrid_retriever.py
 
 from typing import Dict, Any
+import time
+
 from services.retriever.vector_retriever import VectorRetriever
 from services.retriever.bm25_retriever import BM25Retriever
+from libs.retriever.rrf import rrf_fuse
 
 
 class HybridRetriever:
@@ -14,6 +17,8 @@ class HybridRetriever:
     def __init__(self):
         self.vector = VectorRetriever()
         self.bm25 = BM25Retriever()
+        # RRF 融合超参数（常用缺省为 60）
+        self.rrf_k = 60
 
     def search(
         self,
@@ -21,38 +26,38 @@ class HybridRetriever:
         vector_k: int = 5,
         bm25_k: int = 5,
     ) -> Dict[str, Any]:
-
+        t0 = time.time()
         vec_res = self.vector.search(query, vector_k)
+        t1 = time.time()
+
         bm25_res = self.bm25.search(query, bm25_k)
+        t2 = time.time()
 
-        # 粗合并：仅简单拼接（Day 9 会做 RRF）
-        combined = []
+        # RRF 融合（使用底层原始结果）
+        fused_results = rrf_fuse(
+            vector_results = vec_res.get("results", []),
+            bm25_results = bm25_res or [],
+            k = self.rrf_k,
+        )
+        t3 = time.time()
 
-        for hit in vec_res["results"]:
-            combined.append({
-                "source": "vector",
-                "score": float(hit["score"]),
-                "text": hit["meta"].get("text") if hit.get("meta") else None,
-                "doc_id": hit.get("doc_id"),
-                "chunk_id": hit.get("chunk_id"),
-            })
+        latency_ms = {
+            "vector": round((t1 - t0) * 1000, 2),
+            "bm25": round((t2 - t1) * 1000, 2),
+            "fusion": round((t3 - t2) * 1000, 2),
+            "total": round((t3 - t0) * 1000, 2),
+        }
 
-        for hit in bm25_res:
-            combined.append({
-                "source": "bm25",
-                "score": float(hit["score"]),
-                "text": hit["text"],
-                "chunk_id": hit["chunk_id"],
-            })
 
         return {
             "query": query,
-            "vector_results": vec_res["results"],
-            "bm25_results": bm25_res,
-            "combined": combined,
+            "vector_results": vec_res.get("results", []),
+            "bm25_results": bm25_res or [],
+            "fused_results": fused_results,
+            "latency_ms": latency_ms,
         }
 def main():
     h = HybridRetriever()
-    h.search("test document")
+    print(h.search("test document", vector_k=3, bm25_k=3))
 if __name__ == "__main__":
     main()
