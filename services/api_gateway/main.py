@@ -154,11 +154,15 @@ def query_endpoint(
     hybrid: bool = Query(False, description="是否使用 hybrid 检索"),
     vector_k: int = 5,
     bm25_k: int = 5,
+    rerank: bool = Query(False, description="是否启用 rerank（仅 hybrid 模式）"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    debug: bool = Query(False, description="是否返回调试信息（仅 hybrid 模式生效）"),
 ):
     """
     支持 hybrid 检索：
     - hybrid=false: 仅向量检索
-    - hybrid=true: vector + BM25
+    - hybrid=true: vector + BM25 (+ RRF + 可选 Rerank)
     """
 
     # -----------------------------
@@ -212,15 +216,30 @@ def query_endpoint(
     # -----------------------------
     # Hybrid 模式：vector + BM25 + RRF
     # -----------------------------
-    res = hybrid_retriever.search(q, vector_k=vector_k, bm25_k=bm25_k)
+    res = hybrid_retriever.search(
+        q,
+        vector_k=vector_k,
+        bm25_k=bm25_k,
+        top_k=top_k,
+        rerank=rerank,
+        page=page,
+        page_size=page_size,
+        debug=debug,
+    )
 
-
-    return {
+    response: Dict[str, Any] = {
         "query": q,
         "hybrid": True,
         "top_k": top_k,
         "vector_k": vector_k,
         "bm25_k": bm25_k,
+        "rerank": rerank,
         "latency_ms": res.get("latency_ms", {}),
-        "results": res.get("fused_results", []),
-        }
+        "pagination": res.get("pagination"),
+        "results": res.get("final_results") or res.get("fused_results", []),
+    }
+
+    if debug:
+        response["debug"] = res.get("debug")
+
+    return response
