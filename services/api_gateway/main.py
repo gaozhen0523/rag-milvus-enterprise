@@ -13,6 +13,8 @@ import numpy as np
 from libs.db.milvus_client import MilvusClientFactory
 from services.retriever.vector_retriever import VectorRetriever
 from services.retriever.hybrid_retriever import HybridRetriever
+from libs.caching.query_cache import query_cache
+from libs.logging.query_logger import query_logger
 
 # -----------------------------------------------------------------------------
 # FastAPI app
@@ -165,23 +167,52 @@ def query_endpoint(
     - hybrid=true: vector + BM25 (+ RRF + 可选 Rerank)
     """
 
-    # -----------------------------
-    # 仅向量检索模式
-    # -----------------------------
+    trace_id = str(uuid.uuid4())
+
+    # -----------------------------------------------------
+    # 缓存 key
+    # -----------------------------------------------------
+    cache_key = query_cache.make_key(q, hybrid, top_k, vector_k, bm25_k)
+    cached = query_cache.get(cache_key)
+
+    if cached:
+        # 加 trace_id
+        cached["trace_id"] = trace_id
+        cached["cache_hit"] = True
+
+        # 记录日志：cache hit
+        query_logger.log({
+            "trace_id": trace_id,
+            "query": q,
+            "hybrid": hybrid,
+            "top_k": top_k,
+            "latency_ms": 0,
+            "result_count": len(cached.get("results", [])),
+            "cache_hit": True,
+            "timestamp": datetime.now(tz=timezone.utc).isoformat()
+        })
+
+        return cached
+
+    # -----------------------------------------------------
+    # 缓存 miss → 执行真实检索
+    # -----------------------------------------------------
+    t_start = time.time()
 
     if not hybrid:
+        # -----------------------------
+        # 向量检索
+        # -----------------------------
         t0 = time.time()
         res = vector_retriever.search(q, top_k)
         t1 = time.time()
-        raw_hits = res.get("results", [])
 
+        raw_hits = res.get("results", [])
         formatted = []
 
         for hit in raw_hits:
-            # 兼容 meta 中的 text
             text = hit.get("text")
             meta = hit.get("meta") or {}
-
             if not text and isinstance(meta, dict):
                 text = meta.get("text") or meta.get("content")
 
@@ -194,52 +225,75 @@ def query_endpoint(
                 "rrf_score": None,
                 "sources": ["vector"],
             }
-
             if "error" in hit:
                 item["error"] = hit["error"]
+
             formatted.append(item)
 
         latency_ms = {
             "vector": round((t1 - t0) * 1000, 2),
-            "total": round((t1 - t0) * 1000, 2),
+            "total": round((t1 - t_start) * 1000, 2),
         }
 
-
-        return {
+        response = {
+            "trace_id": trace_id,
+            "cache_hit": False,
             "query": q,
             "hybrid": False,
             "top_k": top_k,
             "latency_ms": latency_ms,
             "results": formatted,
-            }
+        }
 
-    # -----------------------------
-    # Hybrid 模式：vector + BM25 + RRF
-    # -----------------------------
-    res = hybrid_retriever.search(
-        q,
-        vector_k=vector_k,
-        bm25_k=bm25_k,
-        top_k=top_k,
-        rerank=rerank,
-        page=page,
-        page_size=page_size,
-        debug=debug,
-    )
+    else:
+        # -----------------------------
+        # Hybrid 检索
+        # -----------------------------
+        res = hybrid_retriever.search(
+            q,
+            vector_k=vector_k,
+            bm25_k=bm25_k,
+            top_k=top_k,
+            rerank=rerank,
+            page=page,
+            page_size=page_size,
+            debug=debug,
+        )
 
-    response: Dict[str, Any] = {
+        response = {
+            "trace_id": trace_id,
+            "cache_hit": False,
+            "query": q,
+            "hybrid": True,
+            "top_k": top_k,
+            "vector_k": vector_k,
+            "bm25_k": bm25_k,
+            "rerank": rerank,
+            "latency_ms": res.get("latency_ms", {}),
+            "pagination": res.get("pagination"),
+            "results": res.get("final_results") or res.get("fused_results", []),
+        }
+
+        if debug:
+            response["debug"] = res.get("debug")
+
+    # -----------------------------------------------------
+    # 写入缓存
+    # -----------------------------------------------------
+    query_cache.set(cache_key, response, ttl=60)
+
+    # -----------------------------------------------------
+    # 写入日志（文件 + SQLite）
+    # -----------------------------------------------------
+    query_logger.log({
+        "trace_id": trace_id,
         "query": q,
-        "hybrid": True,
+        "hybrid": hybrid,
         "top_k": top_k,
-        "vector_k": vector_k,
-        "bm25_k": bm25_k,
-        "rerank": rerank,
-        "latency_ms": res.get("latency_ms", {}),
-        "pagination": res.get("pagination"),
-        "results": res.get("final_results") or res.get("fused_results", []),
-    }
-
-    if debug:
-        response["debug"] = res.get("debug")
+        "latency_ms": response.get("latency_ms", {}).get("total", None),
+        "result_count": len(response.get("results", [])),
+        "cache_hit": False,
+        "payload": response,
+    })
 
     return response
