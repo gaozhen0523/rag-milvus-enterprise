@@ -157,7 +157,7 @@ def query_endpoint(
     vector_k: int = 5,
     bm25_k: int = 5,
     rerank: bool = Query(False, description="是否启用 rerank（仅 hybrid 模式）"),
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=1_000_000),
     page_size: int = Query(10, ge=1, le=50),
     debug: bool = Query(False, description="是否返回调试信息（仅 hybrid 模式生效）"),
 ):
@@ -170,13 +170,26 @@ def query_endpoint(
     trace_id = str(uuid.uuid4())
 
     # -----------------------------------------------------
-    # 缓存 key
+    # 缓存处理
+    #  - debug=True 时：完全绕过缓存（不读不写）
     # -----------------------------------------------------
-    cache_key = query_cache.make_key(q, hybrid, top_k, vector_k, bm25_k)
-    cached = query_cache.get(cache_key)
+    cache_key = None
+    cached = None
+    if not debug:
+        cache_key = query_cache.make_key(
+            q,
+            hybrid,
+            top_k,
+            vector_k,
+            bm25_k,
+            page,
+            page_size,
+            rerank,
+        )
+        cached = query_cache.get(cache_key)
 
     if cached:
-        # 加 trace_id
+        # 加 trace_id & cache 标记（不回写 Redis，只修改返回对象）
         cached["trace_id"] = trace_id
         cached["cache_hit"] = True
 
@@ -278,9 +291,11 @@ def query_endpoint(
             response["debug"] = res.get("debug")
 
     # -----------------------------------------------------
-    # 写入缓存
+    # 写入缓存（debug=True 不写；没结果也不写）
     # -----------------------------------------------------
-    query_cache.set(cache_key, response, ttl=60)
+    if not debug and cache_key and response.get("results"):
+        # Day 12 约定：短期缓存 30s
+        query_cache.set(cache_key, response, ttl=30)
 
     # -----------------------------------------------------
     # 写入日志（文件 + SQLite）
