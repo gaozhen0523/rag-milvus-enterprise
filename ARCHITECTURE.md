@@ -20,15 +20,16 @@ graph TD
     A2[Client Request] -->|GET /query| E[API Gateway]
     E --> F[Hybrid Retriever]
 
-    subgraph Retrieval Pipeline
+    subgraph RetrievalPipeline
         F --> D
         F --> G[BM25 Index]
         F --> H[RRF Fusion]
-        H --> I[Rerank (optional)]
+        H --> I["Rerank (optional)"]
     end
 
     I --> J[Final Response JSON]
 ```
+
 
 ---
 
