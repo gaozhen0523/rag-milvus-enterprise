@@ -1,12 +1,14 @@
-#services/embedding_worker/main.py
+# services/embedding_worker/main.py
 import os
 from datetime import datetime
+
 from libs.chunking.text_chunker import TextChunker
 from libs.embedding.dummy import DummyEmbeddingModel
 
+
 def process_file(file_path: str):
     """读取文件 → 分块 → 生成 embedding → 打印统计"""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         text = f.read()
 
     chunker = TextChunker(strategy="sentence", size=500, overlap=50)
@@ -22,6 +24,7 @@ def process_file(file_path: str):
 
     print(f"[{datetime.now()}] Processed {len(chunks)} chunks, dim={model.dim}")
     return vectors
+
 
 if __name__ == "__main__":
     test_file = os.getenv("TEST_DOC", "sample.txt")

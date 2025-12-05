@@ -1,13 +1,12 @@
 # services/embedding_worker/worker.py
 import os
 import time
-from typing import Optional, Dict, Any
 from datetime import datetime
+from typing import Any
 
 from libs.chunking.text_chunker import TextChunker
 from libs.db.milvus_client import MilvusClientFactory
 from libs.embedding.factory import get_embedding_model
-
 
 # 单次批量插入的最大 chunk 数量，可通过环境变量覆盖
 DEFAULT_BATCH_SIZE = 2000
@@ -18,7 +17,7 @@ def process_document(
     doc_id: str,
     text: str,
     chunk_params,
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: dict[str, Any] | None = None,
 ) -> int:
     """
     文本 → chunk → embedding（分批）→ Milvus insert（分批）
@@ -40,13 +39,16 @@ def process_document(
     chunks = chunker.chunk(text)
     num_chunks = len(chunks)
     if num_chunks == 0:
-        print(f"[INGEST] {datetime.utcnow().isoformat()} doc_id={doc_id} no chunks, skip.")
+        print(
+            f"[INGEST] {datetime.utcnow().isoformat()} doc_id={doc_id} no chunks, skip."
+        )
         return 0
 
     print(
         f"[INGEST] {datetime.utcnow().isoformat()} "
         f"doc_id={doc_id} total_chunks={num_chunks} "
-        f"strategy={chunk_params.strategy} size={chunk_params.size} overlap={chunk_params.overlap}"
+        f"strategy={chunk_params.strategy} size={chunk_params.size} "
+        f"overlap={chunk_params.overlap}"
     )
 
     # -----------------------------
@@ -83,10 +85,7 @@ def process_document(
         batch_chunks = chunks[start:end]
 
         # ---- 3.1 准备文本 ----
-        batch_texts = [
-            c.text if hasattr(c, "text") else str(c)
-            for c in batch_chunks
-        ]
+        batch_texts = [c.text if hasattr(c, "text") else str(c) for c in batch_chunks]
         batch_count = len(batch_texts)
 
         # ---- 3.2 批量 embedding ----
@@ -129,7 +128,8 @@ def process_document(
         print(
             f"[INGEST] {datetime.utcnow().isoformat()} "
             f"doc_id={doc_id} batch={batch_idx}/{total_batches} "
-            f"batch_size={batch_count} embed_ms={embed_ms:.2f} insert_ms={insert_ms:.2f} "
+            f"batch_size={batch_count} embed_ms={embed_ms:.2f} "
+            f"insert_ms={insert_ms:.2f} "
             f"cumulative_inserted={total_inserted}"
         )
 

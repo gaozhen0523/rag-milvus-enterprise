@@ -1,7 +1,10 @@
-#libs/embedding/dummy.py
-import numpy as np
+# libs/embedding/dummy.py
 import hashlib
+
+import numpy as np
+
 from libs.embedding.base import BaseEmbeddingModel
+
 
 class DummyEmbeddingModel(BaseEmbeddingModel):
     """占位 embedding 模型，用随机向量模拟"""

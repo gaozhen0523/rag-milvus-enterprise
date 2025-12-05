@@ -25,13 +25,9 @@ def run_ingest():
 
     payload = {
         "text": test_text,
-        "chunk": {
-            "strategy": "sentence",
-            "size": 200,
-            "overlap": 50
-        },
+        "chunk": {"strategy": "sentence", "size": 200, "overlap": 50},
         "source_id": test_id,
-        "metadata": {"test_id": test_id}
+        "metadata": {"test_id": test_id},
     }
 
     print("\n[1] Sending /ingest request...")

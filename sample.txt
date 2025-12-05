@@ -50,4 +50,3 @@ This allows a query such as “How to scale my search engine?” to match docume
 
 Hybrid search combines the strengths of vector search (semantic) and BM25 (lexical).
 This provides significantly better results in enterprise search scenarios.
-

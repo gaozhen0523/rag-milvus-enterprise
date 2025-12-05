@@ -1,9 +1,9 @@
-import os
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
-from typing import Dict, Any, Optional
 from threading import Lock
+from typing import Any
 
 # --------------------------------------------------------------------
 # 目录初始化
@@ -25,11 +25,13 @@ DB_FILE = os.path.join(DB_DIR, "query_logs.db")
 # --------------------------------------------------------------------
 _sqlite_lock = Lock()
 
+
 def _init_sqlite():
     with _sqlite_lock:
         conn = sqlite3.connect(DB_FILE)
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             CREATE TABLE IF NOT EXISTS query_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 trace_id TEXT,
@@ -41,9 +43,11 @@ def _init_sqlite():
                 payload TEXT,
                 created_at TEXT
             );
-        """)
+        """
+        )
         conn.commit()
         conn.close()
+
 
 # 初始化数据库
 _init_sqlite()
@@ -66,7 +70,7 @@ class QueryLogger:
     # --------------------------------------------------------------
     # 写 JSON 行日志
     # --------------------------------------------------------------
-    def log_to_file(self, record: Dict[str, Any]) -> None:
+    def log_to_file(self, record: dict[str, Any]) -> None:
         try:
             with open(self.log_file, "a", encoding="utf-8") as f:
                 json.dump(record, f, ensure_ascii=False)
@@ -77,7 +81,7 @@ class QueryLogger:
     # --------------------------------------------------------------
     # 写 SQLite
     # --------------------------------------------------------------
-    def log_to_sqlite(self, record: Dict[str, Any]) -> None:
+    def log_to_sqlite(self, record: dict[str, Any]) -> None:
         try:
             payload = json.dumps(record, ensure_ascii=False)
             with _sqlite_lock:
@@ -85,8 +89,16 @@ class QueryLogger:
                 cur = conn.cursor()
                 cur.execute(
                     """
-                    INSERT INTO query_logs 
-                    (trace_id, query, hybrid, top_k, latency, result_count, payload, created_at)
+                    INSERT INTO query_logs (
+                        trace_id,
+                        query,
+                        hybrid,
+                        top_k,
+                        latency,
+                        result_count,
+                        payload,
+                        created_at
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
@@ -98,7 +110,7 @@ class QueryLogger:
                         record.get("result_count"),
                         payload,
                         record.get("timestamp"),
-                    )
+                    ),
                 )
                 conn.commit()
                 conn.close()
@@ -108,7 +120,7 @@ class QueryLogger:
     # --------------------------------------------------------------
     # 对外统一接口
     # --------------------------------------------------------------
-    def log(self, record: Dict[str, Any]) -> None:
+    def log(self, record: dict[str, Any]) -> None:
         if "timestamp" not in record:
             record["timestamp"] = datetime.now(tz=timezone.utc).isoformat()
 

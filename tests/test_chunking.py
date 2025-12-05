@@ -1,6 +1,8 @@
 # tests/test_chunking.py
 import pytest
+
 from libs.chunking.text_chunker import TextChunker
+
 
 def test_char_strategy_basic():
     txt = "abcdefghijklmnopqrstuvwxyz"  # 26 chars
@@ -12,6 +14,7 @@ def test_char_strategy_basic():
     assert chunks[0].text == "abcdefghij"
     assert chunks[-1].text == "qrstuvwxyz"
 
+
 def test_char_strategy_exact_fit():
     txt = "1234567890"  # exactly 10
     chunker = TextChunker(strategy="char", size=10, overlap=3)
@@ -19,6 +22,7 @@ def test_char_strategy_exact_fit():
     assert len(chunks) == 1
     assert chunks[0].start == 0
     assert chunks[0].end == 10
+
 
 def test_sentence_strategy_packing():
     txt = "A. B? C! 这是中文。还有一段？"
@@ -28,6 +32,7 @@ def test_sentence_strategy_packing():
     assert len(chunks) >= 2
     # 每个 chunk 长度不超过 size
     assert all(len(c.text) <= 8 for c in chunks)
+
 
 def test_sentence_overlap_effect():
     txt = "S1. S2. S3. S4. S5."
@@ -40,6 +45,7 @@ def test_sentence_overlap_effect():
     starts = [c.start for c in c2]
     assert all(starts[i] < starts[i + 1] for i in range(len(starts) - 1))
 
+
 def test_invalid_params():
     with pytest.raises(ValueError):
         TextChunker(strategy="char", size=0, overlap=0)
@@ -47,6 +53,7 @@ def test_invalid_params():
         TextChunker(strategy="char", size=10, overlap=10)
     with pytest.raises(ValueError):
         TextChunker(strategy="invalid", size=10, overlap=1)
+
 
 def test_empty_text():
     chunker = TextChunker(strategy="char", size=10, overlap=1)

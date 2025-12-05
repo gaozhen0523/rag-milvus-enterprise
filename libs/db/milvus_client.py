@@ -1,16 +1,16 @@
-#libs/db/milvus_client.py
+# libs/db/milvus_client.py
 import os
+
+import numpy as np
 from dotenv import load_dotenv
-from typing import List, Optional
 from pymilvus import (
-    connections,
-    FieldSchema,
+    Collection,
     CollectionSchema,
     DataType,
-    Collection,
+    FieldSchema,
+    connections,
     utility,
 )
-import numpy as np
 
 load_dotenv(override=False)
 
@@ -26,7 +26,9 @@ class MilvusClientFactory:
     def __init__(self, host=None, port=None, collection_name=None):
         self.host = host or os.getenv("MILVUS_HOST", "127.0.0.1")
         self.port = port or os.getenv("MILVUS_PORT", "19530")
-        self.collection_name = collection_name or os.getenv("MILVUS_COLLECTION", "rag_collection")
+        self.collection_name = collection_name or os.getenv(
+            "MILVUS_COLLECTION", "rag_collection"
+        )
 
     # -------------------------------
     # 连接管理
@@ -54,7 +56,10 @@ class MilvusClientFactory:
                 actual_dim = col.schema.fields[1].params.get("dim")
                 if actual_dim != dim:
                     raise ValueError(
-                        f"Existing collection '{name}' dim={actual_dim} ≠ expected {dim}. Please drop and recreate.")
+                        f"Existing collection '{name}' "
+                        f"dim={actual_dim} ≠ expected {dim}. "
+                        f"Please drop and recreate."
+                    )
                 return col
 
         fields = [
@@ -91,10 +96,12 @@ class MilvusClientFactory:
         try:
             current_indexes = collection.indexes
             if current_indexes and len(current_indexes) > 0:
-                print(f"ℹ️ Index already exists on '{collection.name}', skip create_index.")
+                print(
+                    f"ℹ️ Index already exists on '{collection.name}', skip create_index."
+                )
             else:
                 collection.create_index(field_name="vector", index_params=index_params)
-        except Exception as e:
+        except Exception:
             # 某些版本/场景 collection.indexes 可能不可用，兜底创建
             try:
                 collection.create_index(field_name="vector", index_params=index_params)
@@ -108,9 +115,12 @@ class MilvusClientFactory:
     # -------------------------------
     # Demo 数据插入（用于初始化验证）
     # -------------------------------
-    def insert_demo_data(self, collection: Collection, num_rows: int = 5, dim: int = 768):
+    def insert_demo_data(
+        self, collection: Collection, num_rows: int = 5, dim: int = 768
+    ):
         """插入一些随机向量进行验证"""
         import numpy as np
+
         vectors = np.random.random((num_rows, dim)).astype("float32").tolist()
         doc_ids = [f"doc_{i}" for i in range(num_rows)]
         chunk_ids = list(range(num_rows))
@@ -122,7 +132,9 @@ class MilvusClientFactory:
         result = collection.insert(data)
         collection.flush()
 
-        print(f"✅ Inserted {len(result.primary_keys)} demo rows into '{collection.name}'")
+        print(
+            f"✅ Inserted {len(result.primary_keys)} demo rows into '{collection.name}'"
+        )
         print(f"Total entities now: {collection.num_entities}")
         return result
 
@@ -147,14 +159,14 @@ class MilvusClientFactory:
             return {"status": "error", "detail": str(e)}
 
     def search_vectors(
-            self,
-            query_vector: np.ndarray,
-            top_k: int = 5,
-            collection_name: Optional[str] = None,
-            metric_type: str = os.getenv("EMBEDDING_METRIC", "IP"),
-            nprobe: int = 8,
-            output_fields: Optional[List[str]] = None,
-            alias: str = "default",
+        self,
+        query_vector: np.ndarray,
+        top_k: int = 5,
+        collection_name: str | None = None,
+        metric_type: str = os.getenv("EMBEDDING_METRIC", "IP"),
+        nprobe: int = 8,
+        output_fields: list[str] | None = None,
+        alias: str = "default",
     ):
         """
         在指定 collection 上执行向量检索。
@@ -164,7 +176,8 @@ class MilvusClientFactory:
         self.connect(alias)
         col = Collection(name=name, using=alias)
 
-        # 兼容：确保存储索引 metric 与搜索 metric 一致（若不一致 Milvus 也会按索引的 metric 来）
+        # 兼容：确保存储索引 metric 与搜索 metric 一致
+        # （若不一致 Milvus 也会按索引的 metric 来）
         search_params = {"metric_type": metric_type, "params": {"nprobe": nprobe}}
         output_fields = output_fields or ["doc_id", "chunk_id", "meta"]
 

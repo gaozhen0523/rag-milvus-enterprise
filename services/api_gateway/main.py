@@ -1,20 +1,20 @@
-#services/api_gateway/main.py
+# services/api_gateway/main.py
 from __future__ import annotations
+
+import logging
+import time
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, HttpUrl
-from typing import Optional, Literal, Dict, Any
-import logging
-import uuid
-from datetime import datetime, timezone
-import os, time
-import numpy as np
 
-from libs.db.milvus_client import MilvusClientFactory
-from services.retriever.vector_retriever import VectorRetriever
-from services.retriever.hybrid_retriever import HybridRetriever
 from libs.caching.query_cache import query_cache
+from libs.db.milvus_client import MilvusClientFactory
 from libs.logging.query_logger import query_logger
+from services.retriever.hybrid_retriever import HybridRetriever
+from services.retriever.vector_retriever import VectorRetriever
 
 # -----------------------------------------------------------------------------
 # FastAPI app
@@ -25,6 +25,7 @@ logger = logging.getLogger("uvicorn")
 vector_retriever = VectorRetriever()
 hybrid_retriever = HybridRetriever()
 
+
 # -----------------------------------------------------------------------------
 # Health Check （原逻辑保留）
 # -----------------------------------------------------------------------------
@@ -32,6 +33,7 @@ hybrid_retriever = HybridRetriever()
 def health_check():
     factory = MilvusClientFactory()
     return factory.health_status()
+
 
 # -----------------------------------------------------------------------------
 # Ingest 契约定义
@@ -45,11 +47,14 @@ class ChunkParams(BaseModel):
         if self.overlap >= self.size:
             raise ValueError("overlap must be < size")
 
+
 class IngestRequest(BaseModel):
-    text: Optional[str] = Field(None, description="原始文本（可选；与 file_url 二选一）")
-    file_url: Optional[HttpUrl] = Field(None, description="文件地址（可选；与 text 二选一）")
-    metadata: Optional[Dict[str, Any]] = Field(default=None)
-    source_id: Optional[str] = None
+    text: str | None = Field(None, description="原始文本（可选；与 file_url 二选一）")
+    file_url: HttpUrl | None = Field(
+        None, description="文件地址（可选；与 text 二选一）"
+    )
+    metadata: dict[str, Any] | None = Field(default=None)
+    source_id: str | None = None
     chunk: ChunkParams = Field(default_factory=ChunkParams)
 
     def ensure_payload(self) -> None:
@@ -57,30 +62,36 @@ class IngestRequest(BaseModel):
             raise ValueError("Either 'text' or 'file_url' must be provided.")
         self.chunk.validate_logic()
 
+
 class IngestAck(BaseModel):
     task_id: str
     accepted_at: str
     payload_kind: Literal["text", "file_url"]
     chunk_params: ChunkParams
-    preview_chunks: Optional[int] = None
-    note: Optional[str] = None
+    preview_chunks: int | None = None
+    note: str | None = None
+
 
 # -----------------------------------------------------------------------------
 # Ingest 接口
 # -----------------------------------------------------------------------------
 @app.post("/ingest", response_model=IngestAck)
-def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅校验/预览，不入库/不入队")):
+def ingest(
+    payload: IngestRequest,
+    dry_run: bool = Query(True, description="仅校验/预览，不入库/不入队"),
+):
     try:
         payload.ensure_payload()
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
     task_id = str(uuid.uuid4())
     kind: Literal["text", "file_url"] = "text" if payload.text else "file_url"
 
     # 打日志方便追踪
     logger.info(
-        "INGEST_ACCEPTED task_id=%s kind=%s chunk={strategy:%s,size:%d,overlap:%d} source_id=%s",
+        "INGEST_ACCEPTED task_id=%s kind=%s "
+        "chunk={strategy:%s,size:%d,overlap:%d} source_id=%s",
         task_id,
         kind,
         payload.chunk.strategy,
@@ -102,6 +113,7 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
         if payload.text:
             try:
                 from libs.chunking.text_chunker import TextChunker
+
                 chunker = TextChunker(
                     strategy=payload.chunk.strategy,
                     size=payload.chunk.size,
@@ -122,16 +134,20 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
         text = payload.text
     else:
         import requests
+
         try:
             r = requests.get(payload.file_url, timeout=10)
             r.raise_for_status()
             text = r.text
         except Exception as e:
-            raise HTTPException(status_code=502, detail=f"Failed to download file_url: {e}")
+            raise HTTPException(
+                status_code=502, detail=f"Failed to download file_url: {e}"
+            ) from e
 
     # 2) 调用 Worker 执行 chunk → embed → milvus insert
     try:
         from services.embedding_worker.worker import process_document
+
         inserted = process_document(
             doc_id=task_id,
             text=text,
@@ -140,11 +156,12 @@ def ingest(payload: IngestRequest, dry_run: bool = Query(True, description="仅�
         )
     except Exception as e:
         logger.exception("Ingest processing failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Ingest failed: {e}") from e
 
     ack.preview_chunks = inserted
     ack.note = f"Inserted {inserted} chunks into Milvus."
     return ack
+
 
 # -----------------------------------------------------------------------------
 # Query 接口：向量检索（统一 DummyEmbeddingModel）
@@ -194,16 +211,18 @@ def query_endpoint(
         cached["cache_hit"] = True
 
         # 记录日志：cache hit
-        query_logger.log({
-            "trace_id": trace_id,
-            "query": q,
-            "hybrid": hybrid,
-            "top_k": top_k,
-            "latency_ms": 0,
-            "result_count": len(cached.get("results", [])),
-            "cache_hit": True,
-            "timestamp": datetime.now(tz=timezone.utc).isoformat()
-        })
+        query_logger.log(
+            {
+                "trace_id": trace_id,
+                "query": q,
+                "hybrid": hybrid,
+                "top_k": top_k,
+                "latency_ms": 0,
+                "result_count": len(cached.get("results", [])),
+                "cache_hit": True,
+                "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            }
+        )
 
         return cached
 
@@ -300,15 +319,17 @@ def query_endpoint(
     # -----------------------------------------------------
     # 写入日志（文件 + SQLite）
     # -----------------------------------------------------
-    query_logger.log({
-        "trace_id": trace_id,
-        "query": q,
-        "hybrid": hybrid,
-        "top_k": top_k,
-        "latency_ms": response.get("latency_ms", {}).get("total", None),
-        "result_count": len(response.get("results", [])),
-        "cache_hit": False,
-        "payload": response,
-    })
+    query_logger.log(
+        {
+            "trace_id": trace_id,
+            "query": q,
+            "hybrid": hybrid,
+            "top_k": top_k,
+            "latency_ms": response.get("latency_ms", {}).get("total", None),
+            "result_count": len(response.get("results", [])),
+            "cache_hit": False,
+            "payload": response,
+        }
+    )
 
     return response

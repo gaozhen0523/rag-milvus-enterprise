@@ -1,8 +1,8 @@
 # libs/retriever/rrf.py
-from typing import List, Dict, Any
+from typing import Any
 
 
-def _build_key(hit: Dict[str, Any], source: str, idx: int) -> str:
+def _build_key(hit: dict[str, Any], source: str, idx: int) -> str:
     """
     用 doc_id + chunk_id 作为主要 key；
     如果都没有，就退化为 source + idx，保证 key 唯一。
@@ -16,7 +16,7 @@ def _build_key(hit: Dict[str, Any], source: str, idx: int) -> str:
     return f"{source}:{idx}"
 
 
-def _extract_text_from_vector_hit(hit: Dict[str, Any]) -> str | None:
+def _extract_text_from_vector_hit(hit: dict[str, Any]) -> str | None:
     """
     vector 命中通常来自 Milvus，text 可能藏在 meta 里。
     """
@@ -32,10 +32,10 @@ def _extract_text_from_vector_hit(hit: Dict[str, Any]) -> str | None:
 
 
 def rrf_fuse(
-    vector_results: List[Dict[str, Any]],
-    bm25_results: List[Dict[str, Any]],
+    vector_results: list[dict[str, Any]],
+    bm25_results: list[dict[str, Any]],
     k: int = 60,
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Reciprocal Rank Fusion:
         RRF(d) = Σ_s 1 / (k + rank_s(d))
@@ -49,9 +49,11 @@ def rrf_fuse(
             score_vector, score_bm25,
             rrf_score, sources
     """
-    fused: Dict[str, Dict[str, Any]] = {}
+    fused: dict[str, dict[str, Any]] = {}
 
-    def add_results(results: List[Dict[str, Any]], source: str, is_vector: bool) -> None:
+    def add_results(
+        results: list[dict[str, Any]], source: str, is_vector: bool
+    ) -> None:
         for rank, hit in enumerate(results, start=1):
             key = _build_key(hit, source, rank)
 

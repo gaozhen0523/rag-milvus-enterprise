@@ -1,6 +1,7 @@
 # services/retriever/rerank.py
 
-from typing import List, Dict, Any
+from typing import Any
+
 import numpy as np
 
 from libs.embedding.factory import get_embedding_model
@@ -17,7 +18,7 @@ class Reranker:
     def __init__(
         self,
         alpha: float = 1.0,  # 主权重：query-chunk 语义相似度
-        beta: float = 0.2,   # 辅：BM25 分数
+        beta: float = 0.2,  # 辅：BM25 分数
         gamma: float = 0.2,  # 辅：向量检索分数
         delta: float = 0.3,  # 辅：RRF 分数
     ) -> None:
@@ -38,7 +39,7 @@ class Reranker:
         return float(a.dot(b) / (na * nb))
 
     @staticmethod
-    def _normalize(scores: List[float]) -> List[float]:
+    def _normalize(scores: list[float]) -> list[float]:
         """简单 min-max 归一化；None 视为 0。"""
         vals = [s for s in scores if s is not None]
         if not vals:
@@ -50,12 +51,11 @@ class Reranker:
             # 所有值相等时统一给一个中间值，避免全 0
             return [0.5 if s is not None else 0.0 for s in scores]
 
-        return [
-            (s - mn) / (mx - mn) if s is not None else 0.0
-            for s in scores
-        ]
+        return [(s - mn) / (mx - mn) if s is not None else 0.0 for s in scores]
 
-    def rerank(self, query: str, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def rerank(
+        self, query: str, candidates: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         对候选列表进行重排。
         期望 candidate 至少包含：
@@ -67,10 +67,10 @@ class Reranker:
 
         q_vec = self.model.embed_one(query)
 
-        cos_sims: List[float] = []
-        bm25_scores: List[float] = []
-        vec_scores: List[float] = []
-        rrf_scores: List[float] = []
+        cos_sims: list[float] = []
+        bm25_scores: list[float] = []
+        vec_scores: list[float] = []
+        rrf_scores: list[float] = []
 
         # 逐个 chunk 计算 embedding + cosine
         for c in candidates:
@@ -97,9 +97,11 @@ class Reranker:
             vec_scores.append(
                 c.get("score_vector")
                 if c.get("score_vector") is not None
-                else c.get("vector_score")
-                if c.get("vector_score") is not None
-                else c.get("score")  # 兜底：Milvus 原始 score
+                else (
+                    c.get("vector_score")
+                    if c.get("vector_score") is not None
+                    else c.get("score")
+                )  # 兜底：Milvus 原始 score
             )
 
             rrf_scores.append(c.get("rrf_score"))
@@ -110,14 +112,16 @@ class Reranker:
         vec_norm = self._normalize(vec_scores)
         rrf_norm = self._normalize(rrf_scores)
 
-        reranked: List[Dict[str, Any]] = []
-        for c, cs, nb, nv, nr in zip(candidates, cos_norm, bm25_norm, vec_norm, rrf_norm):
-            score = (
-                self.alpha * cs +
-                self.beta * nb +
-                self.gamma * nv +
-                self.delta * nr
-            )
+        reranked: list[dict[str, Any]] = []
+        for c, cs, nb, nv, nr in zip(
+            candidates,
+            cos_norm,
+            bm25_norm,
+            vec_norm,
+            rrf_norm,
+            strict=True,
+        ):
+            score = self.alpha * cs + self.beta * nb + self.gamma * nv + self.delta * nr
             item = dict(c)
             item["rerank_score"] = float(score)
             item["score_rerank_cos"] = float(cs)

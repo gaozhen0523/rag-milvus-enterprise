@@ -1,5 +1,6 @@
 # libs/embedding/factory.py
 import os
+
 from libs.embedding.base import BaseEmbeddingModel
 
 
@@ -13,6 +14,7 @@ def get_embedding_model() -> BaseEmbeddingModel:
 
     if model_name == "dummy":
         from libs.embedding.dummy import DummyEmbeddingModel
+
         return DummyEmbeddingModel(dim=dim, normalize=True)
 
     else:

@@ -1,12 +1,12 @@
 # services/retriever/hybrid_retriever.py
 
-from typing import Dict, Any
 import time
+from typing import Any
 
-from services.retriever.vector_retriever import VectorRetriever
+from libs.retriever.rrf import rrf_fuse
 from services.retriever.bm25_retriever import BM25Retriever
 from services.retriever.rerank import Reranker
-from libs.retriever.rrf import rrf_fuse
+from services.retriever.vector_retriever import VectorRetriever
 
 
 class HybridRetriever:
@@ -24,16 +24,16 @@ class HybridRetriever:
         self.rrf_k = 60
 
     def search(
-            self,
-            query: str,
-            vector_k: int = 5,
-            bm25_k: int = 5,
-            top_k: int = 5,
-            rerank: bool = False,
-            page: int = 1,
-            page_size: int = 10,
-            debug: bool = False,
-    ) -> Dict[str, Any]:
+        self,
+        query: str,
+        vector_k: int = 5,
+        bm25_k: int = 5,
+        top_k: int = 5,
+        rerank: bool = False,
+        page: int = 1,
+        page_size: int = 10,
+        debug: bool = False,
+    ) -> dict[str, Any]:
         """
         Hybrid 检索：
         - vector 检索
@@ -51,11 +51,14 @@ class HybridRetriever:
         t2 = time.time()
 
         # RRF 融合（使用底层原始结果）
-        fused_results = rrf_fuse(
-            vector_results = vec_res.get("results", []),
-            bm25_results = bm25_res or [],
-            k = self.rrf_k,
-        ) or []
+        fused_results = (
+            rrf_fuse(
+                vector_results=vec_res.get("results", []),
+                bm25_results=bm25_res or [],
+                k=self.rrf_k,
+            )
+            or []
+        )
         t3 = time.time()
 
         # 只对前 top_k 个做 rerank / 分页
@@ -97,7 +100,7 @@ class HybridRetriever:
             "total": total_candidates,
         }
 
-        debug_payload: Dict[str, Any] = {}
+        debug_payload: dict[str, Any] = {}
         if debug:
             debug_payload = {
                 "vector_results_raw": vec_res.get("results", []),
@@ -119,6 +122,7 @@ class HybridRetriever:
             "debug": debug_payload if debug else None,
         }
 
+
 def main():
     h = HybridRetriever()
     h = HybridRetriever()
@@ -134,5 +138,7 @@ def main():
             debug=True,
         )
     )
+
+
 if __name__ == "__main__":
     main()

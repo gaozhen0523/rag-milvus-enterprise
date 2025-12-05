@@ -1,7 +1,8 @@
 # libs/embedding/base.py
 from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import List, Any
+
 import numpy as np
 
 
@@ -26,7 +27,7 @@ class BaseEmbeddingModel(ABC):
     # -------------------------------------------------------------------------
     # 批量接口：多条文本 -> 向量列表
     # -------------------------------------------------------------------------
-    def embed_batch(self, texts: List[str]) -> List[np.ndarray]:
+    def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
         """默认逐条调用 embed_one，可被子类重写为批量加速版本"""
         return [self.embed_one(t) for t in texts]
 

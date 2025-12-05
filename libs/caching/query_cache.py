@@ -1,11 +1,11 @@
 # libs/caching/query_cache.py
+import hashlib
+import json
+import logging
 import os
 import time
-import json
-import hashlib
-import logging
 from threading import Lock
-from typing import Dict, Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +30,12 @@ class QueryCache:
 
     def __init__(self) -> None:
         # in-memory 备用存储
-        self._store: Dict[str, Any] = {}
-        self._expire: Dict[str, float] = {}
+        self._store: dict[str, Any] = {}
+        self._expire: dict[str, float] = {}
         self._lock = Lock()
 
         self._use_redis = False
-        self._redis_client: Optional["redis.Redis"] = None
+        self._redis_client: redis.Redis | None = None
 
         self._init_redis()
 
@@ -44,7 +44,9 @@ class QueryCache:
     # --------------------------------------------------------------
     def _init_redis(self) -> None:
         if redis is None:
-            logger.warning("redis package not installed, QueryCache will use in-memory store.")
+            logger.warning(
+                "redis package not installed, QueryCache will use in-memory store."
+            )
             return
 
         host = os.getenv("REDIS_HOST", "localhost")
@@ -53,14 +55,20 @@ class QueryCache:
         password = os.getenv("REDIS_PASSWORD", None)
 
         try:
-            client = redis.Redis(host=host, port=port, db=db, password=password, decode_responses=True)
+            client = redis.Redis(
+                host=host, port=port, db=db, password=password, decode_responses=True
+            )
             # 测试连接
             client.ping()
             self._redis_client = client
             self._use_redis = True
-            logger.info("QueryCache initialized with Redis at %s:%d db=%d", host, port, db)
+            logger.info(
+                "QueryCache initialized with Redis at %s:%d db=%d", host, port, db
+            )
         except Exception as e:
-            logger.warning("Failed to init Redis for QueryCache, fallback to in-memory. err=%s", e)
+            logger.warning(
+                "Failed to init Redis for QueryCache, fallback to in-memory. err=%s", e
+            )
             self._use_redis = False
             self._redis_client = None
 
@@ -69,14 +77,14 @@ class QueryCache:
     # --------------------------------------------------------------
     @staticmethod
     def make_key(
-            q: str,
-            hybrid: bool,
-            top_k: int,
-            vector_k: int,
-            bm25_k: int,
-            page: int,
-            page_size: int,
-            rerank: bool,
+        q: str,
+        hybrid: bool,
+        top_k: int,
+        vector_k: int,
+        bm25_k: int,
+        page: int,
+        page_size: int,
+        rerank: bool,
     ) -> str:
         """
         Day 12 最终版 cache key:
@@ -95,7 +103,7 @@ class QueryCache:
     # --------------------------------------------------------------
     # get：命中返回 dict，miss 返回 None
     # --------------------------------------------------------------
-    def get(self, key: str) -> Optional[Dict[str, Any]]:
+    def get(self, key: str) -> dict[str, Any] | None:
         # Redis 模式
         if self._use_redis and self._redis_client is not None:
             try:
@@ -119,7 +127,7 @@ class QueryCache:
     # --------------------------------------------------------------
     # set：写入缓存，支持 ttl（秒）
     # --------------------------------------------------------------
-    def set(self, key: str, value: Dict[str, Any], ttl: int = 60) -> None:
+    def set(self, key: str, value: dict[str, Any], ttl: int = 60) -> None:
         if value is None:
             return
 
@@ -131,7 +139,12 @@ class QueryCache:
                 self._redis_client.setex(key, ttl, payload)
                 return
             except Exception as e:
-                logger.warning("QueryCache Redis set failed, key=%s, err=%s; fallback to in-memory", key, e)
+                logger.warning(
+                    "QueryCache Redis set failed, "
+                    "key=%s, err=%s; fallback to in-memory",
+                    key,
+                    e,
+                )
                 # 失败后自动退回内存模式一次，但不关闭 Redis，以便后续恢复
                 # 不修改 self._use_redis，让它有机会再次尝试
 

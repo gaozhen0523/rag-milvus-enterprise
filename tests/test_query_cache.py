@@ -1,5 +1,6 @@
 # tests/test_query_cache.py
 import time
+
 from libs.caching.query_cache import QueryCache
 
 
@@ -18,9 +19,9 @@ def test_key_diff_when_params_diff():
     qc = QueryCache()
 
     k1 = qc.make_key("hello", False, 5, 5, 5, 1, 10, False)
-    k2 = qc.make_key("hello", False, 5, 5, 5, 2, 10, False)   # page 不同
-    k3 = qc.make_key("hello", False, 5, 5, 5, 1, 20, False)   # page_size 不同
-    k4 = qc.make_key("hello", False, 5, 5, 5, 1, 10, True)    # rerank 不同
+    k2 = qc.make_key("hello", False, 5, 5, 5, 2, 10, False)  # page 不同
+    k3 = qc.make_key("hello", False, 5, 5, 5, 1, 20, False)  # page_size 不同
+    k4 = qc.make_key("hello", False, 5, 5, 5, 1, 10, True)  # rerank 不同
 
     assert k1 != k2
     assert k1 != k3
