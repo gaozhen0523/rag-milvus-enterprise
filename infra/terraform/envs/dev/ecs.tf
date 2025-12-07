@@ -21,10 +21,35 @@ module "rag_api_gateway_service" {
   desired_count    = 1
   health_check_path = "/health"
 
-  environment_variables = {
-    ENVIRONMENT = var.environment
-    # 这里后续可以加 MILVUS / REDIS 等配置
-  }
+environment_variables = {
+  # --- Milvus Local Mode ---
+  MILVUS_HOST         = "host.docker.internal"
+  MILVUS_PORT         = "19530"
+  MILVUS_IS_ZILLIZ    = "True"
+
+  # --- Zilliz Cloud Mode ---
+  MILVUS_ZILLIZ_HOST     = "https://in03-d0c7c2a9b8dcff3.serverless.aws-eu-central-1.cloud.zilliz.com"
+  MILVUS_ZILLIZ_API_KEY  = "data.aws_ssm_parameter.milvus_api_key.value"
+
+  # --- Embedding Settings ---
+  EMBEDDING_MODEL     = "dummy"
+  EMBEDDING_DIM       = "768"
+  EMBEDDING_METRIC    = "IP"
+  TEST_DOC            = "sample.txt"
+
+  # --- Redis (TEMP PLACEHOLDER) ---
+  REDIS_HOST          = "host.docker.internal"
+  REDIS_PORT          = "6379"
+  REDIS_DB            = "0"
+
+  # --- Environment Name ---
+  ENVIRONMENT         = var.environment
+}
+
+data "aws_ssm_parameter" "milvus_api_key" {
+  name = "/dev/milvus/api_key"
+  with_decryption = true
+}
 
   tags = local.tags
 }
