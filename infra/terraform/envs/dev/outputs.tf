@@ -22,3 +22,7 @@ output "ecr_repository_urls" {
   description = "Map of ECR repository URLs"
   value       = module.ecr.repository_urls
 }
+
+output "rag_api_gateway_alb_dns_name" {
+  value = module.rag_api_gateway_service.alb_dns_name
+}
