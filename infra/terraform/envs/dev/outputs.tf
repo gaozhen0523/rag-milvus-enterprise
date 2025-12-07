@@ -41,3 +41,7 @@ output "alb_sg_id" {
   description = "Security group for ALB"
   value       = module.sg.alb_sg_id
 }
+
+output "github_actions_role_arn" {
+  value = module.github_oidc_role.github_actions_role_arn
+}
