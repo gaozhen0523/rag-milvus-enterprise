@@ -26,3 +26,18 @@ output "ecr_repository_urls" {
 output "rag_api_gateway_alb_dns_name" {
   value = module.rag_api_gateway_service.alb_dns_name
 }
+
+output "ecs_cluster_arn" {
+  description = "ECS cluster ARN"
+  value       = module.ecs_cluster.cluster_arn
+}
+
+output "ecs_service_sg_id" {
+  description = "Security group for ECS service"
+  value       = module.sg.ecs_service_sg_id
+}
+
+output "alb_sg_id" {
+  description = "Security group for ALB"
+  value       = module.sg.alb_sg_id
+}

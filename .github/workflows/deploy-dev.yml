@@ -19,7 +19,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPO: rag-api-gateway
-  TF_WORKING_DIR: infra/terraform/envs/dev
+  TF_WORKING_DIR: infra/terraform/app
 
 jobs:
 
@@ -93,11 +93,13 @@ jobs:
 
       - name: Terraform Plan
         if: github.event_name == 'pull_request'
-        run: terraform plan -input=false
+        run: |
+          terraform plan -input=false -var="image_tag=${GIT_SHA}"
 
       - name: Terraform Apply (main branch only)
         if: github.ref == 'refs/heads/main'
-        run: terraform apply -auto-approve -input=false
+        run: |
+          terraform apply -auto-approve -input=false -var="image_tag=${GIT_SHA}"
 
 permissions:
   id-token: write
