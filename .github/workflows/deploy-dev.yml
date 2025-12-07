@@ -98,3 +98,7 @@ jobs:
       - name: Terraform Apply (main branch only)
         if: github.ref == 'refs/heads/main'
         run: terraform apply -auto-approve -input=false
+
+permissions:
+  id-token: write
+  contents: read
