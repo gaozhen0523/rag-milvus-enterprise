@@ -29,7 +29,7 @@ module "rag_api_gateway_service" {
 
   # --- Zilliz Cloud Mode ---
   MILVUS_ZILLIZ_HOST     = "https://in03-d0c7c2a9b8dcff3.serverless.aws-eu-central-1.cloud.zilliz.com"
-  MILVUS_ZILLIZ_API_KEY  = "data.aws_ssm_parameter.milvus_api_key.value"
+  MILVUS_ZILLIZ_API_KEY  = data.aws_ssm_parameter.milvus_api_key.value
 
   # --- Embedding Settings ---
   EMBEDDING_MODEL     = "dummy"
