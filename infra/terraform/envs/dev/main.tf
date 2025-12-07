@@ -25,10 +25,10 @@ locals {
 module "vpc" {
   source = "../../modules/vpc"
 
-  vpc_cidr            = var.vpc_cidr
-  public_subnet_cidrs = var.public_subnet_cidrs
+  vpc_cidr             = var.vpc_cidr
+  public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
-  availability_zones = ["us-east-1a", "us-east-1c"]
+  availability_zones   = ["us-east-1a", "us-east-1c"]
 
   enable_nat_gateway = true
   tags               = local.tags
