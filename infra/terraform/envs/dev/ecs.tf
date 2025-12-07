@@ -21,7 +21,7 @@ module "rag_api_gateway_service" {
   desired_count    = 1
   health_check_path = "/health"
 
-environment_variables = {
+  environment_variables = {
   # --- Milvus Local Mode ---
   MILVUS_HOST         = "host.docker.internal"
   MILVUS_PORT         = "19530"
@@ -44,12 +44,12 @@ environment_variables = {
 
   # --- Environment Name ---
   ENVIRONMENT         = var.environment
+  }
+
+  tags = local.tags
 }
 
 data "aws_ssm_parameter" "milvus_api_key" {
   name = "/dev/milvus/api_key"
   with_decryption = true
-}
-
-  tags = local.tags
 }
