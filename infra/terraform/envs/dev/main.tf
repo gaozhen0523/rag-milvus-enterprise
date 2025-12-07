@@ -46,3 +46,11 @@ module "ecr" {
   repository_names = var.ecr_repository_names
   tags             = local.tags
 }
+
+module "sg" {
+  source = "../../modules/sg"
+
+  vpc_id        = module.vpc.vpc_id
+  allowed_cidrs = ["0.0.0.0/0"]
+  tags          = local.tags
+}
