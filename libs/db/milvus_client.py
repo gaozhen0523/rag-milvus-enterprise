@@ -25,6 +25,9 @@ class MilvusClientFactory:
 
     def __init__(self, host=None, port=None, collection_name=None):
         self.host = host or os.getenv("MILVUS_HOST", "127.0.0.1")
+        self.is_zilliz = os.getenv("MILVUS_IS_ZILLIZ", "False").lower() == "true"
+        self.zilliz_host = os.getenv("MILVUS_ZILLIZ_HOST", "")
+        self.zilliz_api_key = os.getenv("MILVUS_ZILLIZ_API_KEY", "")
         self.port = port or os.getenv("MILVUS_PORT", "19530")
         self.collection_name = collection_name or os.getenv(
             "MILVUS_COLLECTION", "rag_collection"
@@ -38,8 +41,16 @@ class MilvusClientFactory:
         if connections.has_connection(alias):
             print(f"🔁 Reusing existing Milvus connection ({alias})")
             return True
-        connections.connect(alias=alias, host=self.host, port=self.port)
-        print(f"✅ Connected to Milvus at {self.host}:{self.port}")
+        if self.is_zilliz:
+            connections.connect(
+                alias=alias,
+                uri=self.zilliz_host,
+                token=self.zilliz_api_key,
+            )
+            print(f"✅ Connected to Milvus at {self.zilliz_host}")
+        else:
+            connections.connect(alias=alias, host=self.host, port=self.port)
+            print(f"✅ Connected to Milvus at {self.host}:{self.port}")
         return True
 
     # -------------------------------
