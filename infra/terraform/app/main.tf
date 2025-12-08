@@ -24,6 +24,7 @@ locals {
 }
 
 module "rag_api_gateway_service" {
+  source = "../modules/ecs_service"
 
   service_name = local.service_name
 
