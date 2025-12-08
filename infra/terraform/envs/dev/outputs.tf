@@ -26,3 +26,7 @@ output "ecr_repository_urls" {
 output "rag_api_gateway_alb_dns_name" {
   value = module.rag_api_gateway_service.alb_dns_name
 }
+
+output "github_actions_role_arn" {
+  value = module.github_oidc_role.github_actions_role_arn
+}
