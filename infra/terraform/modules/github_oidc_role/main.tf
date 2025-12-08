@@ -51,10 +51,6 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "sts:GetCallerIdentity",
           "ec2:Describe*",
 
-          # 让 CI 能读 tfstate
-          "s3:GetObject",
-          "s3:ListBucket",
-
           # ECS Task Execution Role / Task Role creation needs:
           "iam:CreateRole",
           "iam:DeleteRole",
