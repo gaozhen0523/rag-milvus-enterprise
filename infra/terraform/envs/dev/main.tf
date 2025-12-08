@@ -55,9 +55,3 @@ module "sg" {
   allowed_cidrs = ["0.0.0.0/0"]
   tags          = local.tags
 }
-
-module "github_oidc_role" {
-  source = "../../modules/github_oidc_role"
-
-  # no variables needed
-}
