@@ -49,23 +49,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "logs:*",
           "ssm:GetParameter",
           "sts:GetCallerIdentity",
-          "ec2:Describe*",
-
-          # ECS Task Execution Role / Task Role creation needs:
-          "iam:CreateRole",
-          "iam:DeleteRole",
-          "iam:GetRole",
-          "iam:PassRole",
-          "iam:PutRolePolicy",
-          "iam:AttachRolePolicy",
-          "iam:DetachRolePolicy",
-          "iam:UpdateAssumeRolePolicy",
-          "iam:ListAttachedRolePolicies",
-          "iam:CreatePolicy",
-          "iam:GetPolicy",
-          "iam:ListPolicyVersions",
-          "iam:CreatePolicyVersion",
-          "iam:DeletePolicyVersion"
+          "ec2:Describe*"
         ],
         Resource = "*"
       }
