@@ -4,9 +4,11 @@ locals {
 
 # 读取 envs/dev 的 state，复用那里的 VPC / Subnets / SG / Cluster / ECR 配置
 data "terraform_remote_state" "dev" {
-  backend = "local"
+  backend = "s3"
   config = {
-    path = "../envs/dev/terraform.tfstate"
+    bucket = "rag-milvus-tfstate"
+    key    = "dev/terraform.tfstate"
+    region = "us-east-1"
   }
 }
 
