@@ -23,6 +23,10 @@ output "ecr_repository_urls" {
   value       = module.ecr.repository_urls
 }
 
+output "rag_api_gateway_alb_dns_name" {
+  value = module.rag_api_gateway_service.alb_dns_name
+}
+
 output "ecs_cluster_arn" {
   description = "ECS cluster ARN"
   value       = module.ecs_cluster.cluster_arn
