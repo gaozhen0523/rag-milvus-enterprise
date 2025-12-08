@@ -65,9 +65,7 @@ resource "aws_iam_role_policy" "github_actions_policy" {
           "iam:GetPolicy",
           "iam:ListPolicyVersions",
           "iam:CreatePolicyVersion",
-          "iam:DeletePolicyVersion",
-          "iam:TagRole",
-          "iam:CreateOpenIDConnectProvider",
+          "iam:DeletePolicyVersion"
         ],
         Resource = "*"
       }
