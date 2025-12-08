@@ -9,13 +9,6 @@ terraform {
   }
 
   # 后面如果你想用 remote state (S3 + DynamoDB)，可以在这里加 backend "s3" 块
-  backend "s3" {
-    bucket         = "rag-milvus-tfstate"
-    key            = "dev/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "rag-milvus-tfstate-lock"
-    encrypt        = true
-  }
 }
 
 provider "aws" {
