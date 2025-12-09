@@ -65,7 +65,7 @@ data "aws_iam_policy_document" "github_actions_policy" {
     effect = "Allow"
     actions = [
       "ecs:RegisterTaskDefinition",
-      "ecs:DeregisterTaskDefinition"
+      "ecs:DeregisterTaskDefinition",
       "ecs:DescribeTaskDefinition",
       "ecs:DescribeServices",
       "ecs:UpdateService"
