@@ -1,3 +1,4 @@
+#infra/terraform/modules/ecs_service/main.tf
 locals {
   name_prefix = "${var.service_name}"
   tags        = var.tags

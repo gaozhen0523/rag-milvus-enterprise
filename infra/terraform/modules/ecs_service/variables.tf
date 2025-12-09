@@ -1,3 +1,4 @@
+#infra/terraform/modules/ecs_service/variables.tf
 variable "service_name" {
   description = "Name of the ECS service and task family"
   type        = string

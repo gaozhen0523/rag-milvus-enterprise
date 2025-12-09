@@ -26,3 +26,23 @@ output "ecr_repository_urls" {
 output "rag_api_gateway_alb_dns_name" {
   value = module.rag_api_gateway_service.alb_dns_name
 }
+
+output "rag_api_gateway_task_role_arn" {
+  description = "Task IAM role ARN for rag-api-gateway"
+  value       = module.rag_api_gateway_service.task_role_arn
+}
+
+output "rag_api_gateway_task_execution_role_arn" {
+  description = "Task execution IAM role ARN for rag-api-gateway"
+  value       = module.rag_api_gateway_service.task_execution_role_arn
+}
+
+output "rag_api_gateway_service_name" {
+  description = "ECS service name for rag-api-gateway"
+  value       = module.rag_api_gateway_service.service_name
+}
+
+output "github_actions_role_arn" {
+  description = "IAM Role ARN for GitHub Actions OIDC"
+  value       = aws_iam_role.github_actions.arn
+}
