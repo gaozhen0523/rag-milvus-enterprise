@@ -33,6 +33,15 @@ data "terraform_remote_state" "dev" {
 
 locals {
   dev_outputs = data.terraform_remote_state.dev.outputs
+
+  # 把 dev 里的 map(string) → list(object{name,value})
+  environment = [
+    for k, v in local.dev_outputs.rag_api_gateway_environment_variables :
+    {
+      name  = k
+      value = v
+    }
+  ]
 }
 
 resource "aws_ecs_task_definition" "rag_api_gateway" {
@@ -62,6 +71,8 @@ resource "aws_ecs_task_definition" "rag_api_gateway" {
           protocol      = "tcp"
         }
       ]
+
+      environment = local.environment
 
       logConfiguration = {
         logDriver = "awslogs"

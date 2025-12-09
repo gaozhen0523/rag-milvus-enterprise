@@ -46,3 +46,9 @@ output "github_actions_role_arn" {
   description = "IAM Role ARN for GitHub Actions OIDC"
   value       = aws_iam_role.github_actions.arn
 }
+
+output "rag_api_gateway_environment_variables" {
+  description = "Env vars for rag-api-gateway ECS service"
+  value       = module.rag_api_gateway_service.environment_variables
+  sensitive = true
+}

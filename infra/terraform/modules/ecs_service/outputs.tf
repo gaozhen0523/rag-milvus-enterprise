@@ -35,3 +35,8 @@ output "task_execution_role_arn" {
   description = "IAM execution role ARN used by ECS tasks"
   value       = aws_iam_role.execution.arn
 }
+
+output "environment_variables" {
+  description = "Environment variables for the container"
+  value       = var.environment_variables
+}
