@@ -47,3 +47,15 @@ variable "ecr_repository_names" {
     "rag-api-gateway"
   ]
 }
+
+variable "root_domain" {
+  description = "Root domain name managed in Route53"
+  type        = string
+  default     = "zhencloud.com"
+}
+
+variable "rag_api_subdomain" {
+  description = "Subdomain for rag-api-gateway"
+  type        = string
+  default     = "rag"
+}
