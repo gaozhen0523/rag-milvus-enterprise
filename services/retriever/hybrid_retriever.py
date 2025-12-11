@@ -3,10 +3,14 @@
 import time
 from typing import Any
 
+from opentelemetry import trace
+
 from libs.retriever.rrf import rrf_fuse
 from services.retriever.bm25_retriever import BM25Retriever
 from services.retriever.rerank import Reranker
 from services.retriever.vector_retriever import VectorRetriever
+
+_tracer = trace.get_tracer("hybrid-retriever")
 
 
 class HybridRetriever:
@@ -43,84 +47,85 @@ class HybridRetriever:
         - 可选 Rerank
         - 分页
         """
-        t0 = time.time()
-        vec_res = self.vector.search(query, vector_k)
-        t1 = time.time()
+        with _tracer.start_as_current_span("hybrid.search"):
+            t0 = time.time()
+            vec_res = self.vector.search(query, vector_k)
+            t1 = time.time()
 
-        bm25_res = self.bm25.search(query, bm25_k)
-        t2 = time.time()
+            bm25_res = self.bm25.search(query, bm25_k)
+            t2 = time.time()
 
-        # RRF 融合（使用底层原始结果）
-        fused_results = (
-            rrf_fuse(
-                vector_results=vec_res.get("results", []),
-                bm25_results=bm25_res or [],
-                k=self.rrf_k,
+            # RRF 融合（使用底层原始结果）
+            fused_results = (
+                rrf_fuse(
+                    vector_results=vec_res.get("results", []),
+                    bm25_results=bm25_res or [],
+                    k=self.rrf_k,
+                )
+                or []
             )
-            or []
-        )
-        t3 = time.time()
+            t3 = time.time()
 
-        # 只对前 top_k 个做 rerank / 分页
-        candidates = fused_results[:top_k] if top_k > 0 else fused_results
-        total_candidates = len(candidates)
+            # 只对前 top_k 个做 rerank / 分页
+            candidates = fused_results[:top_k] if top_k > 0 else fused_results
+            total_candidates = len(candidates)
 
-        if rerank and candidates:
-            rerank_start = time.time()
-            reranked_candidates = self.reranker.rerank(query, candidates)
-            rerank_end = rerank_start + (time.time() - rerank_start)
-        else:
-            rerank_start = rerank_end = t3
-            reranked_candidates = candidates
+            if rerank and candidates:
+                rerank_start = time.time()
+                reranked_candidates = self.reranker.rerank(query, candidates)
+                rerank_end = rerank_start + (time.time() - rerank_start)
+            else:
+                rerank_start = rerank_end = t3
+                reranked_candidates = candidates
 
-        # 分页（在候选池内部分页）
-        start = (page - 1) * page_size
-        end = start + page_size
-        if start >= len(reranked_candidates):
-            page_items = []
-        else:
-            page_items = reranked_candidates[start:end]
+            # 分页（在候选池内部分页）
+            start = (page - 1) * page_size
+            end = start + page_size
+            if start >= len(reranked_candidates):
+                page_items = []
+            else:
+                page_items = reranked_candidates[start:end]
 
-        # 构造延时信息
-        latency_ms = {
-            "vector": round((t1 - t0) * 1000, 2),
-            "bm25": round((t2 - t1) * 1000, 2),
-            "fusion": round((t3 - t2) * 1000, 2),
-        }
-
-        if rerank:
-            latency_ms["rerank"] = round((rerank_end - rerank_start) * 1000, 2)
-            latency_ms["total"] = round((rerank_end - t0) * 1000, 2)
-        else:
-            latency_ms["total"] = round((t3 - t0) * 1000, 2)
-
-        pagination = {
-            "page": page,
-            "page_size": page_size,
-            "total": total_candidates,
-        }
-
-        debug_payload: dict[str, Any] = {}
-        if debug:
-            debug_payload = {
-                "vector_results_raw": vec_res.get("results", []),
-                "bm25_results_raw": bm25_res or [],
-                "fused_results_full": fused_results,
-                "candidates_before_rerank": candidates,
-                "rerank_enabled": rerank,
+            # 构造延时信息
+            latency_ms = {
+                "vector": round((t1 - t0) * 1000, 2),
+                "bm25": round((t2 - t1) * 1000, 2),
+                "fusion": round((t3 - t2) * 1000, 2),
             }
 
-        return {
-            "query": query,
-            "vector_results": vec_res.get("results", []),
-            "bm25_results": bm25_res or [],
-            "fused_results": fused_results,
-            "final_results": page_items,
-            "latency_ms": latency_ms,
-            "pagination": pagination,
-            "rerank": rerank,
-            "debug": debug_payload if debug else None,
-        }
+            if rerank:
+                latency_ms["rerank"] = round((rerank_end - rerank_start) * 1000, 2)
+                latency_ms["total"] = round((rerank_end - t0) * 1000, 2)
+            else:
+                latency_ms["total"] = round((t3 - t0) * 1000, 2)
+
+            pagination = {
+                "page": page,
+                "page_size": page_size,
+                "total": total_candidates,
+            }
+
+            debug_payload: dict[str, Any] = {}
+            if debug:
+                debug_payload = {
+                    "vector_results_raw": vec_res.get("results", []),
+                    "bm25_results_raw": bm25_res or [],
+                    "fused_results_full": fused_results,
+                    "candidates_before_rerank": candidates,
+                    "rerank_enabled": rerank,
+                }
+
+            return {
+                "query": query,
+                "vector_results": vec_res.get("results", []),
+                "bm25_results": bm25_res or [],
+                "fused_results": fused_results,
+                "final_results": page_items,
+                "latency_ms": latency_ms,
+                "pagination": pagination,
+                "rerank": rerank,
+                "debug": debug_payload if debug else None,
+            }
 
 
 def main():

@@ -7,7 +7,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+
+# --- OpenTelemetry Tracing ---
+from opentelemetry import trace
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pydantic import BaseModel, Field, HttpUrl
 
 from libs.caching.query_cache import query_cache
@@ -20,7 +26,26 @@ from services.retriever.vector_retriever import VectorRetriever
 # -----------------------------------------------------------------------------
 # FastAPI app
 # -----------------------------------------------------------------------------
+# --- OpenTelemetry Tracer Init ---
+provider = TracerProvider()
+processor = BatchSpanProcessor(ConsoleSpanExporter())
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
+otel_tracer = trace.get_tracer("rag-api-gateway")
 app = FastAPI(title="RAG API Gateway", version="0.0.4")
+
+
+@app.middleware("http")
+async def inject_trace_id(request, call_next):
+    span = trace.get_current_span()
+    trace_id = format(span.get_span_context().trace_id, "032x")
+    request.state.trace_id = trace_id
+    response = await call_next(request)
+    response.headers["X-Trace-ID"] = trace_id
+    return response
+
+
+FastAPIInstrumentor.instrument_app(app)
 logger = logging.getLogger("uvicorn")
 
 vector_retriever = VectorRetriever()
@@ -170,6 +195,7 @@ def ingest(
 # -----------------------------------------------------------------------------
 @app.get("/query")
 def query_endpoint(
+    request: Request,
     q: str = Query(..., description="查询文本"),
     top_k: int = Query(5, ge=1, le=20),
     hybrid: bool = Query(False, description="是否使用 hybrid 检索"),
@@ -189,7 +215,7 @@ def query_endpoint(
       - Redis 缓存不可用 -> 自动回退内存缓存，标记 redis_ok=False
     """
 
-    trace_id = str(uuid.uuid4())
+    trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
     t_start = time.time()
 
     # -----------------------------------------------------

@@ -2,9 +2,12 @@
 
 from typing import Any
 
+from opentelemetry import trace
 from rank_bm25 import BM25Okapi
 
 from libs.db.milvus_client import MilvusClientFactory
+
+_tracer = trace.get_tracer("bm25-retriever")
 
 
 class BM25Retriever:
@@ -53,25 +56,26 @@ class BM25Retriever:
         """
         BM25: 返回 top_k chunk 文本 + score
         """
-        if not self._initialized:
-            self._load_corpus()
-        if self.bm25 is None:
-            return []
+        with _tracer.start_as_current_span("bm25.search"):
+            if not self._initialized:
+                self._load_corpus()
+            if self.bm25 is None:
+                return []
 
-        tokens = query.split()
-        scores = self.bm25.get_scores(tokens)
+            tokens = query.split()
+            scores = self.bm25.get_scores(tokens)
 
-        # 排序 (idx, score)
-        ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
+            # 排序 (idx, score)
+            ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
 
-        results = []
-        for idx, score in ranked:
-            results.append(
-                {
-                    "chunk_id": idx,
-                    "score": float(score),
-                    "text": self.corpus[idx],
-                }
-            )
+            results = []
+            for idx, score in ranked:
+                results.append(
+                    {
+                        "chunk_id": idx,
+                        "score": float(score),
+                        "text": self.corpus[idx],
+                    }
+                )
 
-        return results
+            return results
