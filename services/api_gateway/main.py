@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from libs.caching.query_cache import query_cache
 from libs.db.milvus_client import MilvusClientFactory
 from libs.logging.query_logger import query_logger
+from services.retriever.bm25_retriever import BM25Retriever
 from services.retriever.hybrid_retriever import HybridRetriever
 from services.retriever.vector_retriever import VectorRetriever
 
@@ -24,6 +25,7 @@ logger = logging.getLogger("uvicorn")
 
 vector_retriever = VectorRetriever()
 hybrid_retriever = HybridRetriever()
+bm25_retriever = BM25Retriever()
 
 
 # -----------------------------------------------------------------------------
@@ -180,19 +182,39 @@ def query_endpoint(
 ):
     """
     支持 hybrid 检索：
-    - hybrid=false: 仅向量检索
+    - hybrid=false: 仅向量检索（Milvus）
     - hybrid=true: vector + BM25 (+ RRF + 可选 Rerank)
+    Day23: 增加 Milvus/Redis 故障降级能力：
+      - Milvus 故障 -> 自动降级为 BM25-only
+      - Redis 缓存不可用 -> 自动回退内存缓存，标记 redis_ok=False
     """
 
     trace_id = str(uuid.uuid4())
+    t_start = time.time()
+
+    # -----------------------------------------------------
+    # 降级/健康状态标记
+    # -----------------------------------------------------
+    milvus_ok = True
+    degraded = False
+    degraded_mode: str | None = None
+    degraded_reason: str | None = None
+
+    # Redis 状态
+    try:
+        redis_ok = query_cache.is_redis_available()
+    except Exception:
+        redis_ok = True  # 没这个方法就当作 True
 
     # -----------------------------------------------------
     # 缓存处理
-    #  - debug=True 时：完全绕过缓存（不读不写）
+    #   - debug=True 时：完全绕过缓存（不读不写）
+    #   - 降级结果不写入缓存（避免缓存住故障状态）
     # -----------------------------------------------------
-    cache_key = None
-    cached = None
-    if not debug:
+    cache_key: str | None = None
+    cached: dict[str, Any] | None = None
+
+    if not debug and redis_ok:
         cache_key = query_cache.make_key(
             q,
             hybrid,
@@ -206,11 +228,15 @@ def query_endpoint(
         cached = query_cache.get(cache_key)
 
     if cached:
-        # 加 trace_id & cache 标记（不回写 Redis，只修改返回对象）
+        # 给缓存结果补充 trace_id / cache_hit / 健康信息
         cached["trace_id"] = trace_id
         cached["cache_hit"] = True
+        cached.setdefault("degraded", False)
+        cached.setdefault("degraded_mode", None)
+        cached.setdefault("degraded_reason", None)
+        cached.setdefault("milvus_ok", True)
+        cached.setdefault("redis_ok", redis_ok)
 
-        # 记录日志：cache hit
         query_logger.log(
             {
                 "trace_id": trace_id,
@@ -220,6 +246,10 @@ def query_endpoint(
                 "latency_ms": 0,
                 "result_count": len(cached.get("results", [])),
                 "cache_hit": True,
+                "degraded": cached.get("degraded", False),
+                "milvus_ok": cached.get("milvus_ok"),
+                "redis_ok": cached.get("redis_ok"),
+                "degraded_reason": cached.get("degraded_reason"),
                 "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
         )
@@ -229,90 +259,198 @@ def query_endpoint(
     # -----------------------------------------------------
     # 缓存 miss → 执行真实检索
     # -----------------------------------------------------
-    t_start = time.time()
-
     if not hybrid:
-        # -----------------------------
-        # 向量检索
-        # -----------------------------
-        t0 = time.time()
-        res = vector_retriever.search(q, top_k)
-        t1 = time.time()
+        # =================================================
+        # 分支一：纯向量检索（带 Milvus 降级）
+        # =================================================
+        try:
+            t0 = time.time()
+            res = vector_retriever.search(q, top_k)
+            t1 = time.time()
 
-        raw_hits = res.get("results", [])
-        formatted = []
+            raw_hits = res.get("results", [])
+            formatted: list[dict[str, Any]] = []
 
-        for hit in raw_hits:
-            text = hit.get("text")
-            meta = hit.get("meta") or {}
-            if not text and isinstance(meta, dict):
-                text = meta.get("text") or meta.get("content")
+            for hit in raw_hits:
+                text = hit.get("text")
+                meta = hit.get("meta") or {}
+                if not text and isinstance(meta, dict):
+                    text = meta.get("text") or meta.get("content")
 
-            item = {
-                "doc_id": hit.get("doc_id"),
-                "chunk_id": hit.get("chunk_id"),
-                "text": text,
-                "score_vector": float(hit["score"]) if "score" in hit else None,
-                "score_bm25": None,
-                "rrf_score": None,
-                "sources": ["vector"],
+                item: dict[str, Any] = {
+                    "doc_id": hit.get("doc_id"),
+                    "chunk_id": hit.get("chunk_id"),
+                    "text": text,
+                    "score_vector": float(hit["score"]) if "score" in hit else None,
+                    "score_bm25": None,
+                    "rrf_score": None,
+                    "sources": ["vector"],
+                }
+                if "error" in hit:
+                    item["error"] = hit["error"]
+
+                formatted.append(item)
+
+            latency_ms = {
+                "vector": round((t1 - t0) * 1000, 2),
+                "total": round((t1 - t_start) * 1000, 2),
             }
-            if "error" in hit:
-                item["error"] = hit["error"]
 
-            formatted.append(item)
+            response: dict[str, Any] = {
+                "trace_id": trace_id,
+                "cache_hit": False,
+                "query": q,
+                "hybrid": False,
+                "top_k": top_k,
+                "latency_ms": latency_ms,
+                "results": formatted,
+            }
 
-        latency_ms = {
-            "vector": round((t1 - t0) * 1000, 2),
-            "total": round((t1 - t_start) * 1000, 2),
-        }
+        except Exception as e:
+            # -----------------------------
+            # Milvus 故障 → 降级为 BM25-only
+            # -----------------------------
+            milvus_ok = False
+            degraded = True
+            degraded_mode = "bm25_only"
+            degraded_reason = f"vector_search_failed: {e}"
 
-        response = {
-            "trace_id": trace_id,
-            "cache_hit": False,
-            "query": q,
-            "hybrid": False,
-            "top_k": top_k,
-            "latency_ms": latency_ms,
-            "results": formatted,
-        }
+            t_bm0 = time.time()
+            bm25_hits = bm25_retriever.search(q, top_k)
+            t_bm1 = time.time()
+
+            formatted: list[dict[str, Any]] = []
+            for hit in bm25_hits:
+                formatted.append(
+                    {
+                        "doc_id": None,
+                        "chunk_id": hit.get("chunk_id"),
+                        "text": hit.get("text"),
+                        "score_vector": None,
+                        "score_bm25": float(hit["score"]) if "score" in hit else None,
+                        "rrf_score": None,
+                        "sources": ["bm25"],
+                    }
+                )
+
+            latency_ms = {
+                "vector": 0.0,
+                "bm25": round((t_bm1 - t_bm0) * 1000, 2),
+                "total": round((t_bm1 - t_start) * 1000, 2),
+            }
+
+            response = {
+                "trace_id": trace_id,
+                "cache_hit": False,
+                "query": q,
+                "hybrid": False,
+                "top_k": top_k,
+                "latency_ms": latency_ms,
+                "results": formatted,
+            }
 
     else:
-        # -----------------------------
-        # Hybrid 检索
-        # -----------------------------
-        res = hybrid_retriever.search(
-            q,
-            vector_k=vector_k,
-            bm25_k=bm25_k,
-            top_k=top_k,
-            rerank=rerank,
-            page=page,
-            page_size=page_size,
-            debug=debug,
-        )
+        # =================================================
+        # 分支二：Hybrid 检索（向量 + BM25 + RRF）
+        # 若内部出现 Milvus 错误，同样降级为 BM25-only
+        # =================================================
+        try:
+            res = hybrid_retriever.search(
+                query=q,
+                vector_k=vector_k,
+                bm25_k=bm25_k,
+                top_k=top_k,
+                rerank=rerank,
+                page=page,
+                page_size=page_size,
+                debug=debug,
+            )
 
-        response = {
-            "trace_id": trace_id,
-            "cache_hit": False,
-            "query": q,
-            "hybrid": True,
-            "top_k": top_k,
-            "vector_k": vector_k,
-            "bm25_k": bm25_k,
-            "rerank": rerank,
-            "latency_ms": res.get("latency_ms", {}),
-            "pagination": res.get("pagination"),
-            "results": res.get("final_results") or res.get("fused_results", []),
-        }
+            response = {
+                "trace_id": trace_id,
+                "cache_hit": False,
+                "query": q,
+                "hybrid": True,
+                "top_k": top_k,
+                "vector_k": vector_k,
+                "bm25_k": bm25_k,
+                "rerank": rerank,
+                "latency_ms": res.get("latency_ms", {}),
+                "pagination": res.get("pagination"),
+                "results": res.get("final_results") or res.get("fused_results", []),
+            }
 
-        if debug:
-            response["debug"] = res.get("debug")
+            if debug:
+                response["debug"] = res.get("debug")
+
+        except Exception as e:
+            # -----------------------------
+            # Hybrid 内部异常（通常是 Milvus）→ BM25-only
+            # -----------------------------
+            milvus_ok = False
+            degraded = True
+            degraded_mode = "bm25_only"
+            degraded_reason = f"hybrid_search_failed: {e}"
+
+            t_bm0 = time.time()
+            bm25_hits = bm25_retriever.search(q, top_k)
+            t_bm1 = time.time()
+
+            formatted: list[dict[str, Any]] = []
+            for hit in bm25_hits:
+                formatted.append(
+                    {
+                        "doc_id": None,
+                        "chunk_id": hit.get("chunk_id"),
+                        "text": hit.get("text"),
+                        "score_vector": None,
+                        "score_bm25": float(hit["score"]) if "score" in hit else None,
+                        "rrf_score": None,
+                        "sources": ["bm25"],
+                    }
+                )
+
+            latency_ms = {
+                "bm25": round((t_bm1 - t_bm0) * 1000, 2),
+                "total": round((t_bm1 - t_start) * 1000, 2),
+            }
+
+            response = {
+                "trace_id": trace_id,
+                "cache_hit": False,
+                "query": q,
+                "hybrid": True,
+                "top_k": top_k,
+                "vector_k": vector_k,
+                "bm25_k": top_k,
+                "rerank": False,
+                "latency_ms": latency_ms,
+                "pagination": {
+                    "page": 1,
+                    "page_size": len(formatted) or page_size,
+                    "total": len(formatted),
+                },
+                "results": formatted,
+            }
 
     # -----------------------------------------------------
-    # 写入缓存（debug=True 不写；没结果也不写）
+    # 补充降级 & 健康元信息
     # -----------------------------------------------------
-    if not debug and cache_key and response.get("results"):
+    response["degraded"] = degraded
+    response["degraded_mode"] = degraded_mode
+    response["degraded_reason"] = degraded_reason
+    response["milvus_ok"] = milvus_ok
+    response["redis_ok"] = redis_ok
+
+    # -----------------------------------------------------
+    # 写入缓存（debug=True / degraded=True 不写；空结果也不写）
+    # -----------------------------------------------------
+    if (
+        not debug
+        and cache_key
+        and response.get("results")
+        and not response.get("degraded", False)
+    ):
         # Day 12 约定：短期缓存 30s
         query_cache.set(cache_key, response, ttl=30)
 
@@ -328,6 +466,11 @@ def query_endpoint(
             "latency_ms": response.get("latency_ms", {}).get("total", None),
             "result_count": len(response.get("results", [])),
             "cache_hit": False,
+            "degraded": degraded,
+            "degraded_mode": degraded_mode,
+            "degraded_reason": degraded_reason,
+            "milvus_ok": milvus_ok,
+            "redis_ok": redis_ok,
             "payload": response,
         }
     )

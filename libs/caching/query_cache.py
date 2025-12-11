@@ -39,6 +39,14 @@ class QueryCache:
 
         self._init_redis()
 
+    def is_redis_available(self) -> bool:
+        """
+        用于对外暴露当前是否在使用 Redis 作为后端。
+        - True  表示正在用 Redis
+        - False 表示走 in-memory fallback
+        """
+        return bool(self._use_redis and self._redis_client is not None)
+
     # --------------------------------------------------------------
     # Redis 初始化（失败自动回退内存）
     # --------------------------------------------------------------
