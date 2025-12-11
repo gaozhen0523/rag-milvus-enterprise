@@ -18,7 +18,7 @@ class BM25Retriever:
         self.milvus = MilvusClientFactory()
         self._initialized = False
         self.corpus: list[str] = []
-        self.bm25 = None
+        self.bm25: BM25Okapi | None = None
 
     def _load_corpus(self):
         """
@@ -26,9 +26,13 @@ class BM25Retriever:
         """
         if self._initialized:
             return
-        rows = (
-            self.milvus.fetch_all_documents()
-        )  # 你需要提供一个 fetch 函数（我下面给你写）
+        try:
+            rows = self.milvus.fetch_all_documents()
+        except Exception as e:
+            print(f"⚠️ BM25 corpus load failed (Milvus unavailable): {e}")
+            self.bm25 = None
+            self._initialized = True
+            return
         self.corpus: list[str] = [
             row["meta"].get("text", "")
             for row in rows
@@ -38,6 +42,7 @@ class BM25Retriever:
         if not self.corpus:
             print("⚠️ BM25 corpus is empty. Skipping BM25 initialization.")
             self.bm25 = None
+            self._initialized = True
             return
 
         tokenized = [doc.split() for doc in self.corpus]
