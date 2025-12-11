@@ -16,12 +16,16 @@ class BM25Retriever:
 
     def __init__(self):
         self.milvus = MilvusClientFactory()
-        self._load_corpus()
+        self._initialized = False
+        self.corpus: list[str] = []
+        self.bm25 = None
 
     def _load_corpus(self):
         """
         读取所有 chunks 的 meta.text 字段作为 BM25 的 corpus。
         """
+        if self._initialized:
+            return
         rows = (
             self.milvus.fetch_all_documents()
         )  # 你需要提供一个 fetch 函数（我下面给你写）
@@ -38,11 +42,14 @@ class BM25Retriever:
 
         tokenized = [doc.split() for doc in self.corpus]
         self.bm25 = BM25Okapi(tokenized)
+        self._initialized = True
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         """
         BM25: 返回 top_k chunk 文本 + score
         """
+        if not self._initialized:
+            self._load_corpus()
         if self.bm25 is None:
             return []
 
