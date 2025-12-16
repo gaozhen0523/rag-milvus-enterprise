@@ -146,3 +146,88 @@ def process_document(
     )
 
     return total_inserted
+
+
+def process_document_incremental(
+    doc_id: str,
+    chunks,
+    metadata: dict[str, Any] | None = None,
+) -> int:
+    """
+    Day 25 新增：
+    专用于 chunk 去重后的增量插入场景。
+    与 process_document 不同：
+      - 不负责 chunk（外层已 chunk）
+      - 不负责全量分页，只插入传入的 dedup_chunks
+    """
+    num_chunks = len(chunks)
+    if num_chunks == 0:
+        print(
+            f"[INGEST-INCR] {datetime.utcnow().isoformat()} "
+            f"doc_id={doc_id} no new chunks, skip."
+        )
+        return 0
+
+    # -----------------------------
+    # Embedding Model / Milvus 准备
+    # -----------------------------
+    model = get_embedding_model()
+
+    model_dim = getattr(model, "dim", None)
+    if model_dim is None:
+        model_dim = int(os.getenv("EMBEDDING_DIM", 768))
+
+    factory = MilvusClientFactory()
+    collection = factory.get_or_create_collection(
+        name="rag_collection",
+        dim=model_dim,
+    )
+    collection.load()
+
+    received_at = datetime.utcnow().isoformat()
+
+    # -----------------------------
+    # 构建 embedding 输入
+    # -----------------------------
+    batch_texts = [c.text for c in chunks]
+    batch_vectors = model.embed_batch(batch_texts)
+
+    batch_doc_ids = [doc_id] * num_chunks
+    # 使用 chunk 自带 chunk_id，避免编号错乱
+    batch_chunk_ids = [c.chunk_id for c in chunks]
+    batch_metas = [
+        {
+            "source": "api_ingest_incremental",
+            "received_at": received_at,
+            "text": c.text,
+            "user_meta": metadata or {},
+        }
+        for c in chunks
+    ]
+
+    data = [batch_vectors, batch_doc_ids, batch_chunk_ids, batch_metas]
+
+    # -----------------------------
+    # 插入 Milvus
+    # -----------------------------
+    t_insert_start = time.time()
+    result = collection.insert(data)
+    t_insert_end = time.time()
+
+    batch_inserted = (
+        len(getattr(result, "primary_keys", []))
+        if result is not None and hasattr(result, "primary_keys")
+        else num_chunks
+    )
+
+    print(
+        f"[INGEST-INCR] {datetime.utcnow().isoformat()} "
+        f"doc_id={doc_id} new_chunks={num_chunks} "
+        f"insert_ms={(t_insert_end - t_insert_start) * 1000.0:.2f} "
+        f"inserted={batch_inserted}"
+    )
+
+    # Flush（小批次也 flush，保证可查询）
+    collection.flush()
+
+    return batch_inserted

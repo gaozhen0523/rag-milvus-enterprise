@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 
 # --- OpenTelemetry Tracing ---
 from opentelemetry import trace
@@ -23,6 +25,7 @@ from services.retriever.bm25_retriever import BM25Retriever
 from services.retriever.hybrid_retriever import HybridRetriever
 from services.retriever.vector_retriever import VectorRetriever
 
+load_dotenv(override=False)
 # -----------------------------------------------------------------------------
 # FastAPI app
 # -----------------------------------------------------------------------------
@@ -33,6 +36,19 @@ provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
 otel_tracer = trace.get_tracer("rag-api-gateway")
 app = FastAPI(title="RAG API Gateway", version="0.0.4")
+
+# ---------------------------------------------------------------------
+# API Key Authentication (Day 25)
+# ---------------------------------------------------------------------
+API_GATEWAY_TOKEN = os.getenv("API_GATEWAY_TOKEN")
+
+
+def require_api_key(request: Request):
+    if not API_GATEWAY_TOKEN:
+        return  # 如果未配置 token，则默认关闭鉴权（方便本地）
+    key = request.headers.get("X-API-Key")
+    if key != API_GATEWAY_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
 @app.middleware("http")
@@ -105,6 +121,8 @@ class IngestAck(BaseModel):
 @app.post("/ingest", response_model=IngestAck)
 def ingest(
     payload: IngestRequest,
+    request: Request,
+    api_ok: None = Depends(require_api_key),
     dry_run: bool = Query(True, description="仅校验/预览，不入库/不入队"),
 ):
     try:
@@ -173,12 +191,37 @@ def ingest(
 
     # 2) 调用 Worker 执行 chunk → embed → milvus insert
     try:
-        from services.embedding_worker.worker import process_document
+        from libs.chunking.text_chunker import TextChunker
 
-        inserted = process_document(
+        chunker = TextChunker(
+            strategy=payload.chunk.strategy,
+            size=payload.chunk.size,
+            overlap=payload.chunk.overlap,
+        )
+        chunks = chunker.chunk(text, meta=payload.metadata)
+
+        import hashlib
+
+        def h(s: str) -> str:
+            return hashlib.md5(s.encode("utf-8")).hexdigest()
+
+        cached_flags = []
+        dedup_chunks = []
+        for c in chunks:
+            ck = f"chunk:{h(c.text)}"
+            if query_cache.get(ck):
+                cached_flags.append(True)
+            else:
+                cached_flags.append(False)
+                dedup_chunks.append(c)
+                query_cache.set(ck, True, ttl=24 * 3600)  # 24h 避免重复写入
+
+        # 3) 调用 Worker 处理去重后的 chunks
+        from services.embedding_worker.worker import process_document_incremental
+
+        inserted = process_document_incremental(
             doc_id=task_id,
-            text=text,
-            chunk_params=payload.chunk,
+            chunks=dedup_chunks,
             metadata=payload.metadata,
         )
     except Exception as e:
@@ -196,6 +239,7 @@ def ingest(
 @app.get("/query")
 def query_endpoint(
     request: Request,
+    api_ok: None = Depends(require_api_key),
     q: str = Query(..., description="查询文本"),
     top_k: int = Query(5, ge=1, le=20),
     hybrid: bool = Query(False, description="是否使用 hybrid 检索"),
