@@ -1,7 +1,6 @@
 # services/api_gateway/main.py
 from __future__ import annotations
 
-import logging
 import os
 import time
 import uuid
@@ -21,6 +20,7 @@ from pydantic import BaseModel, Field, HttpUrl
 from libs.caching.query_cache import query_cache
 from libs.db.milvus_client import MilvusClientFactory
 from libs.logging.query_logger import query_logger
+from libs.logging.structured_logger import logger  # 新增
 from services.retriever.bm25_retriever import BM25Retriever
 from services.retriever.hybrid_retriever import HybridRetriever
 from services.retriever.vector_retriever import VectorRetriever
@@ -52,17 +52,42 @@ def require_api_key(request: Request):
 
 
 @app.middleware("http")
-async def inject_trace_id(request, call_next):
-    span = trace.get_current_span()
-    trace_id = format(span.get_span_context().trace_id, "032x")
+async def inject_trace_id(request: Request, call_next):
+    """
+    统一注入 trace_id / correlation_id：
+      - 优先使用上游传来的 X-Trace-Id / X-Correlation-Id
+      - 否则从 OpenTelemetry span 生成 / 随机生成
+    """
+    # 1) 从 header 读取
+    header_trace_id = request.headers.get("X-Trace-Id") or request.headers.get(
+        "X-Trace-ID"
+    )
+    correlation_id = request.headers.get("X-Correlation-Id")
+
+    # 2) 如果没有，就从 OTEL span 里拿一个；再不行就 uuid4
+    if header_trace_id:
+        trace_id = header_trace_id
+    else:
+        span = trace.get_current_span()
+        span_ctx = span.get_span_context()
+        if span_ctx and span_ctx.trace_id:
+            trace_id = format(span_ctx.trace_id, "032x")
+        else:
+            trace_id = uuid.uuid4().hex
+
+    # 放到 request.state，后面 handler / libs 都能拿到
     request.state.trace_id = trace_id
+    request.state.correlation_id = correlation_id
+
     response = await call_next(request)
-    response.headers["X-Trace-ID"] = trace_id
+    response.headers["X-Trace-Id"] = trace_id
+    if correlation_id:
+        response.headers["X-Correlation-Id"] = correlation_id
     return response
 
 
 FastAPIInstrumentor.instrument_app(app)
-logger = logging.getLogger("uvicorn")
+
 
 vector_retriever = VectorRetriever()
 hybrid_retriever = HybridRetriever()
@@ -134,15 +159,24 @@ def ingest(
     kind: Literal["text", "file_url"] = "text" if payload.text else "file_url"
 
     # 打日志方便追踪
+    trace_id = getattr(request.state, "trace_id", None)
+    correlation_id = getattr(request.state, "correlation_id", None)
+
     logger.info(
-        "INGEST_ACCEPTED task_id=%s kind=%s "
-        "chunk={strategy:%s,size:%d,overlap:%d} source_id=%s",
-        task_id,
-        kind,
-        payload.chunk.strategy,
-        payload.chunk.size,
-        payload.chunk.overlap,
-        payload.source_id,
+        "INGEST_ACCEPTED",
+        trace_id=trace_id,
+        correlation_id=correlation_id,
+        extra={
+            "task_id": task_id,
+            "kind": kind,
+            "chunk": {
+                "strategy": payload.chunk.strategy,
+                "size": payload.chunk.size,
+                "overlap": payload.chunk.overlap,
+            },
+            "source_id": payload.source_id,
+            "dry_run": dry_run,
+        },
     )
 
     ack = IngestAck(
@@ -168,7 +202,12 @@ def ingest(
                 ack.preview_chunks = len(chunks)
                 ack.note = "Dry run only. No Milvus insert."
             except Exception as e:
-                logger.exception("dry_run chunk failed: %s", e)
+                logger.exception(
+                    "INGEST_DRY_RUN_CHUNK_FAILED",
+                    trace_id=trace_id,
+                    correlation_id=correlation_id,
+                    extra={"error": str(e)},
+                )
 
         return ack
     # ---------------------------------------------------------------------
@@ -225,7 +264,15 @@ def ingest(
             metadata=payload.metadata,
         )
     except Exception as e:
-        logger.exception("Ingest processing failed: %s", e)
+        logger.exception(
+            "INGEST_PROCESSING_FAILED",
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+            extra={
+                "task_id": task_id,
+                "error": str(e),
+            },
+        )
         raise HTTPException(status_code=500, detail=f"Ingest failed: {e}") from e
 
     ack.preview_chunks = inserted
@@ -260,6 +307,7 @@ def query_endpoint(
     """
 
     trace_id = getattr(request.state, "trace_id", str(uuid.uuid4()))
+    correlation_id = getattr(request.state, "correlation_id", None)
     t_start = time.time()
 
     # -----------------------------------------------------
@@ -322,6 +370,18 @@ def query_endpoint(
                 "degraded_reason": cached.get("degraded_reason"),
                 "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
+        )
+
+        logger.info(
+            "QUERY_CACHE_HIT",
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+            extra={
+                "query": q,
+                "hybrid": hybrid,
+                "top_k": top_k,
+                "result_count": len(cached.get("results", [])),
+            },
         )
 
         return cached
@@ -543,6 +603,23 @@ def query_endpoint(
             "redis_ok": redis_ok,
             "payload": response,
         }
+    )
+
+    logger.info(
+        "QUERY_EXECUTED",
+        trace_id=trace_id,
+        correlation_id=correlation_id,
+        extra={
+            "query": q,
+            "hybrid": hybrid,
+            "top_k": top_k,
+            "latency_ms": response.get("latency_ms", {}),
+            "result_count": len(response.get("results", [])),
+            "degraded": degraded,
+            "degraded_mode": degraded_mode,
+            "milvus_ok": milvus_ok,
+            "redis_ok": redis_ok,
+        },
     )
 
     return response
