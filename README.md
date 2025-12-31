@@ -9,7 +9,7 @@ Enterprise-grade Retrieval-Augmented Generation (RAG) system built on top of **M
 
 ---
 ## Demo Video (Mandarin)
-https://www.youtube.com/watch?v=PcnfdrZuJWQ
+https://youtu.be/fRDCESMmNsQ
 ## 1. What this project does
 
 This repo implements an end-to-end RAG system:
