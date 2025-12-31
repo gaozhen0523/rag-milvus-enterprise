@@ -8,7 +8,8 @@ Enterprise-grade Retrieval-Augmented Generation (RAG) system built on top of **M
 - 📈 **Observability**: Structured logging, query latency benchmark, tracing hooks
 
 ---
-
+## Demo Video (Mandarin)
+https://www.youtube.com/watch?v=PcnfdrZuJWQ
 ## 1. What this project does
 
 This repo implements an end-to-end RAG system:
